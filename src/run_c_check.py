@@ -23,7 +23,25 @@ class Out(ct.Structure):
                 ("mode_f", ct.c_float)]
 
 
+def build_if_needed():
+    """gains.h / pace.h / bb2_control.c のどれかが新しければビルドし直す"""
+    import subprocess, glob
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    srcs = glob.glob(os.path.join(root, "firmware", "*.c")) + \
+           glob.glob(os.path.join(root, "firmware", "*.h"))
+    need = (not os.path.exists(LIB)) or \
+           any(os.path.getmtime(f) > os.path.getmtime(LIB) for f in srcs)
+    if need:
+        os.makedirs(os.path.join(root, "out"), exist_ok=True)
+        cmd = ["cc", "-O2", "-Wall", "-std=c99", "-I", os.path.join(root, "firmware"),
+               "-shared", "-fPIC", os.path.join(root, "firmware", "bb2_control.c"),
+               "-o", LIB, "-lm"]
+        subprocess.run(cmd, check=True)
+        print("(C をビルドしました)")
+
+
 def load():
+    build_if_needed()
     lib = ct.CDLL(LIB)
     lib.bb2_step.restype = Out
     lib.bb2_step.argtypes = [Meas]
