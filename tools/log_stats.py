@@ -74,12 +74,17 @@ def current_tracking(rows):
         den = sum(cmd[i] * cmd[i] for i in idx)
         return num / den if den > 0 and len(idx) >= 10 else float("nan")
 
+    def peak(idx):
+        """実電流の大きさの上位 10% の値 = 出せている電流の上限の目安"""
+        a = sorted(abs(act[i]) for i in idx)
+        return a[int(len(a) * 0.9)] if len(a) >= 10 else float("nan")
+
     low = slope([i for i in range(len(rows)) if spd[i] < 0.15])
     out = []
     for lo, hi in ((0.0, 0.15), (0.15, 0.3), (0.3, 0.45), (0.45, 9.0)):
         idx = [i for i in range(len(rows)) if lo <= spd[i] < hi]
         k = slope(idx)
-        out.append((lo, hi, len(idx), k / low if low == low and low != 0 else float("nan")))
+        out.append((lo, hi, len(idx), k / low if low == low and low != 0 else float("nan"), peak(idx)))
     return low, out
 
 
@@ -107,11 +112,11 @@ def report(path):
         print("  (実際の電流は記録されていない。古いログ)")
     else:
         low, out = tr
-        print(f"  電流の追従 (低速で 実電流 = {low:.3f} × 指令 を 1 とした比):")
-        for lo, hi, n, k in out:
+        print(f"  電流の追従 (低速で 実電流 = {low:.3f} × 指令 を 1 とした比) と、出せている実電流の上限の目安 (上位10%):")
+        for lo, hi, n, k, pk in out:
             rng = f"{lo:.2f}〜{hi:.2f}" if hi < 9 else f"{lo:.2f}〜    "
-            print(f"    速度 {rng} m/s  {n:>4} 件  {k:>5.2f}" if n >= 10 else f"    速度 {rng} m/s  {n:>4} 件   (少なすぎ)")
-        high = [k for lo, hi, n, k in out if lo >= 0.3 and n >= 10 and k == k]
+            print(f"    速度 {rng} m/s  {n:>4} 件  比 {k:>5.2f}  上限 {pk:>5.0f}" if n >= 10 else f"    速度 {rng} m/s  {n:>4} 件   (少なすぎ)")
+        high = [k for lo, hi, n, k, pk in out if lo >= 0.3 and n >= 10 and k == k]
         if high and min(high) < 0.7:
             print("    → 速いときに電流が指令に届いていない。電圧 (逆起電力・電池) が限界の疑い")
         elif high:
