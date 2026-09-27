@@ -99,12 +99,14 @@ v3: build/v3.bin
 
 # v4 = v3 + 目標軌道フィードフォワード (前傾 a/g)。 make v4 FF_DIR=-1 で向き反転
 v4:
+	rm -f build/main_v3.o build/v3.axf build/v3.bin
 	$(MAKE) v3 FFK=1 FF_DIR=$(FF_DIR)
 	cp build/v3.bin build/v4.bin
 .PHONY: v4
 
 # v5 = v4 + 車輪角速度オブザーバ。 make v5 VBW=20
 v5:
+	rm -f build/main_v3.o build/v3.axf build/v3.bin
 	$(MAKE) v3 FFK=1 FF_DIR=$(FF_DIR) VOBS=1 VBW=$(VBW)
 	cp build/v3.bin build/v5.bin
 .PHONY: v5
