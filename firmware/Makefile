@@ -42,6 +42,7 @@ stock: build/stock.bin
 
 # v5 (main.c) の調整値。 ../bb2 flash v5 VMAX=0.4 のように上書きする。意味は main.c の先頭
 VMAX ?= 0.5
+VBACK ?= 0.3
 ACC ?= 0.5
 FFK ?= 1
 TI ?= 2
@@ -54,7 +55,7 @@ CAL_RANGE ?= 30
 LOGDIV ?= 20
 DIAG ?= 0
 DIAG_DELAY ?= 0
-DEFS = -DV_MAX='($(VMAX))' -DACC_MAX='($(ACC))' -DFF_K='($(FFK))' -DTI_S='($(TI))' -DI_CLIP='($(ICLIP))' \
+DEFS = -DV_MAX='($(VMAX))' -DV_BACK='($(VBACK))' -DACC_MAX='($(ACC))' -DFF_K='($(FFK))' -DTI_S='($(TI))' -DI_CLIP='($(ICLIP))' \
        -DE_MAX='($(EMAX))' -DVBW='($(VBW))' -DV_BOOST='($(BOOST))' -DACC_BOOST='($(BACC))' \
        -DCAL_RANGE=$(CAL_RANGE) -DREC_DIV=$(LOGDIV) -DDIAG=$(DIAG) -DDIAG_DELAY=$(DIAG_DELAY)
 

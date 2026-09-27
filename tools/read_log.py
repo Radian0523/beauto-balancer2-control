@@ -29,6 +29,9 @@ DIAG_NAMES = ["body_angle_rad", "gyro_raw_mean_lsb", "body_rate_rad_s", "wheel_s
               "theta_rawint_rad", "current_cmd", "gyro_updates", "wheel_err_int_rad_s"]
 DIAG_SCALE = [1e-4, 1e-2, 1e-3, 1e-2, 1e-4, 1.0, 1.0, 1e-3]
 GYRO_K = 0.041849 * 0.125     # 純正 GyroProc の換算 [rad/s per LSB]
+# 10 変数版 (2026-09-27 夜から) は末尾に実際の電流 (左, 右) が付く
+EXTRA_NAMES = ["m_current_l", "m_current_r"]
+EXTRA_SCALE = [1.0, 1.0]
 
 
 def open_dev():
@@ -71,6 +74,7 @@ def main():
     diag = hdr[:2] == b"LD"
     names, scale = (DIAG_NAMES, DIAG_SCALE) if diag else (NAMES, SCALE)
     nvar, div = hdr[2], hdr[3]
+    names, scale = (names + EXTRA_NAMES)[:nvar], (scale + EXTRA_SCALE)[:nvar]
     idx, cnt = struct.unpack_from("<HH", hdr, 4)
     rate = 500.0 / div
     cap = (4096 - HDR) // (nvar * 2)
@@ -117,6 +121,9 @@ def main():
     ax[2].plot(t, [x * WHEEL_R for x in col[4]], "--", label="目標速度")
     ax[2].set_ylabel("m/s")
     ax[3].plot(t, col[5], label="電流指令 (左右平均)")
+    if len(col) >= 10:
+        ax[3].plot(t, col[8], lw=0.8, alpha=0.7, label="実際の電流 左 (生値)")
+        ax[3].plot(t, col[9], lw=0.8, alpha=0.7, label="実際の電流 右 (生値)")
     ax[3].set_ylabel("T_CURRENT")
     ax[4].plot(t, [x * WHEEL_R * 100 for x in col[6]], label="目標とのずれ")
     ax[4].plot(t, [x * WHEEL_R * 100 for x in col[7]], label="ずれの積分 [cm*s]")
@@ -130,6 +137,7 @@ def main():
     path_png = f"logs/run_{stamp}.png"
     fig.savefig(path_png, dpi=110)
     print(f"保存: {path_csv}\n保存: {path_png}")
+    subprocess.run([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), "log_stats.py"), path_csv])
     subprocess.run(["open", path_png])
 
 

@@ -29,6 +29,9 @@
 #ifndef V_MAX
 #define V_MAX     (0.5)     /* VMAX: スティックを倒しきったときの速度 [m/s]。0.6 は不安定だった */
 #endif
+#ifndef V_BACK
+#define V_BACK    (0.3)     /* VBACK: 後退の最高速度 [m/s]。後退 0.47 m/s からの減速で倒れたので前進より低くする */
+#endif
 #ifndef ACC_MAX
 #define ACC_MAX   (0.5)     /* ACC: 加速度の上限 [m/s^2] */
 #endif
@@ -121,6 +124,8 @@ static void pad_to_speed(void)
         v_tgt = V_BOOST;
         amax = ACC_BOOST;
     }
+
+    if (v_tgt < -V_BACK) v_tgt = -V_BACK;                        /* 後退だけ遅くする */
 
     a_des = clamp(K_V * (v_tgt - v_cmd), -amax, amax);                          /* 速度の差 → 欲しい加速度 */
     a_new = a_cmd + clamp(a_des - a_cmd, -JERK / MAIN_CYCLE, JERK / MAIN_CYCLE); /* 加速度は急に変えない */
@@ -244,11 +249,11 @@ static void control(void)
  * srcbuf は USB の 'R' コマンドで 0x1000 番地から読める (純正のログ機能は止めているので衝突しない)。
  *
  * 形式: 先頭 8 バイト = 'L', 'G'(通常)/'D'(診断), 変数の数, 間引き, 次に書く位置(2), 有効サンプル数(2)
- *       その後に 1 サンプル = int16 × 8 (リトルエンディアン)
+ *       その後に 1 サンプル = int16 × 10 (リトルエンディアン)
  */
-#define LOG_NVAR  (8)
+#define LOG_NVAR  (10)
 #define LOG_HDR   (8)
-#define LOG_CAP   ((4096 - LOG_HDR) / (LOG_NVAR * 2))   /* 255 サンプル */
+#define LOG_CAP   ((4096 - LOG_HDR) / (LOG_NVAR * 2))   /* 204 サンプル (25Hz で約 8 秒) */
 extern uint8_t srcbuf[4096];
 static unsigned int log_idx, log_cnt, log_div;
 
@@ -295,6 +300,8 @@ static void log_sample(void)
     v[5] = s16((memmap.values.T_CURRENT_L + memmap.values.T_CURRENT_R) * 0.5);  /* 電流指令 平均 */
     v[6] = s16((last_el + last_er) * 500.0);                                    /* 車輪角のずれ 平均 [mrad] */
     v[7] = s16((int_l + int_r) * 500.0);                                        /* ずれの積分 平均 [mrad*s] */
+    v[8] = memmap.values.M_CURRENT_L - memmap.values.CURRENT_OFFSET_L;          /* 実際の電流 左 (0 点を引いた生値) */
+    v[9] = memmap.values.M_CURRENT_R - memmap.values.CURRENT_OFFSET_R;          /* 実際の電流 右 */
 #if DIAG
     v[1] = s16(dg_sum / REC_DIV * 100.0);    /* 生ジャイロ (0 点を引いた値) の区間平均 [0.01 LSB] */
     v[4] = s16(dg_theta * 1e4);              /* 生ジャイロを単純積分した傾き [0.1 mrad] (0 に戻す処理なし) */
