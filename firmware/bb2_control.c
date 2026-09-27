@@ -2,6 +2,36 @@
 #include "gains.h"
 #include <math.h>
 
+/* libm の sinf/cosf/atan2f は大きな引数用の縮約コード(約3KB)を引き込み
+ * LPC1343 の 28KB に収まらないため、誤差 1e-3 程度の軽量版を使う。 */
+static float wrap_pi(float x)
+{
+    while (x >  3.14159265f) x -= 6.28318531f;
+    while (x < -3.14159265f) x += 6.28318531f;
+    return x;
+}
+static float sin_s(float x)            /* 任意の x */
+{
+    float y;
+    x = wrap_pi(x);
+    if (x >  1.57079633f) x =  3.14159265f - x;
+    if (x < -1.57079633f) x = -3.14159265f - x;
+    y = x * x;
+    return x * (1.0f - y * (0.16666667f - y * (0.00833333f - y * 0.00019841f)));
+}
+static float cos_s(float x) { return sin_s(x + 1.57079633f); }
+static float atan2_s(float y, float x)
+{
+    float ax = fabsf(x), ay = fabsf(y), a, s, r;
+    if (ax < 1e-9f && ay < 1e-9f) return 0.0f;
+    a = (ax < ay) ? ax / ay : ay / ax;
+    s = a * a;
+    r = ((-0.0464964749f * s + 0.15931422f) * s - 0.327622764f) * s * a + a;
+    if (ay > ax) r = 1.57079633f - r;
+    if (x < 0.0f) r = 3.14159265f - r;
+    return (y < 0.0f) ? -r : r;
+}
+
 /* ------------------------------------------------------------------ 調整値 */
 float BB2_V_NOM     = 0.35f;
 float BB2_K_FF      = 0.6f;
@@ -85,9 +115,9 @@ static void path_follow(float v_meas, float *v_ref, float *yaw_ref_out)
     dx = x1 - x0; dy = y1 - y0;
     len = sqrtf(dx*dx + dy*dy) + 1e-6f;
     e_lat    = ((od_y - y0) * dx - (od_x - x0) * dy) / len;   /* 左が正 */
-    psi_path = atan2f(dy, dx);
+    psi_path = atan2_s(dy, dx);
     /* Stanley: 進路のずれを方位目標に織り込む (速いほど舵を弱く) */
-    *yaw_ref_out = psi_path - atan2f(BB2_K_STANLEY * e_lat, fabsf(v_meas) + 0.15f);
+    *yaw_ref_out = psi_path - atan2_s(BB2_K_STANLEY * e_lat, fabsf(v_meas) + 0.15f);
     *v_ref = PATH[seg].v;
 }
 
@@ -124,8 +154,8 @@ bb2_out_t bb2_step(bb2_meas_t meas)
     /* --- 参照 -------------------------------------------------------- */
     /* デッドレコニング (エンコーダのみで自己位置を推定) */
     od_psi = yaw;
-    od_x += WHEEL_R * xh[2] * cosf(od_psi) * CTL_TS;
-    od_y += WHEEL_R * xh[2] * sinf(od_psi) * CTL_TS;
+    od_x += WHEEL_R * xh[2] * cos_s(od_psi) * CTL_TS;
+    od_y += WHEEL_R * xh[2] * sin_s(od_psi) * CTL_TS;
     if (mode == BB2_MODE_HOLD) { v_ref = 0.0f; yaw_ref = 0.0f; }
     else                       { path_follow(WHEEL_R * xh[2], &v_ref, &yaw_ref); }
 

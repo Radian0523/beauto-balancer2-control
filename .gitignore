@@ -2,3 +2,4 @@ __pycache__/
 *.pyc
 out/*.dylib
 out/*.so
+firmware/build/

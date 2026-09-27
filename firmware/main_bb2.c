@@ -18,14 +18,26 @@
 #include "Balancer2.h"
 #include "bb2_control.h"
 
+/* ソースを直さずに make GYRO=-1 WHEEL=-1 CUR=-1 のように切り替えられる */
+#ifndef SIGN_GYRO
 #define SIGN_GYRO   (+1.0f)   /* 前傾方向を正にする */
+#endif
+#ifndef SIGN_WHEEL
 #define SIGN_WHEEL  (+1.0f)   /* 前進方向を正にする */
+#endif
+#ifndef SIGN_CUR
 #define SIGN_CUR    (+1.0f)   /* 正の電流で前進する */
+#endif
+
+#define FALL_ANGLE  (0.785f)  /* 45 deg を超えたら転倒とみなしてモータを止める */
 
 #define STAND_TICKS (15 * MAIN_CYCLE)   /* ゾーンA: 15秒 */
 
 unsigned char calibrarion(void);        /* 純正サンプルと同じもの */
+unsigned char isWhleeOverSpeed(void);
 void ClearVariables(void);
+
+static int fallen = 0;
 
 static void user_control(void)
 {
@@ -45,6 +57,8 @@ static void user_control(void)
     tick++;
 
     o = bb2_step(m);
+    if (o.th_hat > FALL_ANGLE || o.th_hat < -FALL_ANGLE) fallen = 1;
+    if (fallen) { o.i_l_ma = 0.0f; o.i_r_ma = 0.0f; }
 
     memmap.values.T_CURRENT_L = (short)(SIGN_CUR * o.i_l_ma);
     memmap.values.T_CURRENT_R = (short)(SIGN_CUR * o.i_r_ma);
@@ -84,8 +98,10 @@ int main(void)
     CurrentControlEnable();
 
     while (1) {
-        CycleProc();                        /* 500Hz で同期 */
+        unsigned char slow = CycleProc();   /* 500Hz で同期。100Hz ごとに 1 */
         user_control();
+        if (fallen) break;
+        if (slow && isWhleeOverSpeed()) break;   /* 純正と同じ 100Hz で判定 */
         if (getSW() == 1) {
             while (getSW() == 1) __NOP();
             break;
