@@ -1,0 +1,5 @@
+--target=arm-none-eabi
+-I.
+-Ivendor
+-Ivendor/lib
+-D__USE_CMSIS=Balancer2_lib

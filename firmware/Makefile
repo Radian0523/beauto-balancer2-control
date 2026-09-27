@@ -40,50 +40,33 @@ build/stock.bin: build/stock.axf
 stock: build/stock.bin
 .PHONY: stock
 
-# main.c の共通設定。v3 = コントローラ操縦 + 段差・坂対策。 make v3 TI=2 EMAX=4 ACC=0.5 VMAX=0.2 BOOST=0.25 BACC=0.6
-TI ?= 2
-EMAX ?= 4
-ACC ?= 0.5
+# v5 (main.c) の調整値。 ../bb2 flash v5 VMAX=0.4 のように上書きする。意味は main.c の先頭
 VMAX ?= 0.5
+ACC ?= 0.5
+FFK ?= 1
+TI ?= 2
+ICLIP ?= 8
+EMAX ?= 4
+VBW ?= 20
 BOOST ?= 0
 BACC ?= 0.6
-V3_FIX ?= 1
-FFK ?= 0
-FF_DIR ?= 1
-VOBS ?= 0
-VBW ?= 20
+CAL_RANGE ?= 30
 LOGDIV ?= 20
-NOTCH ?= 0
-ICLIP ?= 8
 DIAG ?= 0
 DIAG_DELAY ?= 0
-CAL_RANGE ?= 30
-NQ ?= 2
-V3_DEFS = -DCAL_RANGE=$(CAL_RANGE) -DDIAG=$(DIAG) -DDIAG_DELAY=$(DIAG_DELAY) -DI_CLIP='($(ICLIP))' -DNOTCH=$(NOTCH) -DNQ='($(NQ))' -DREC_DIV=$(LOGDIV) -DVOBS=$(VOBS) -DVBW='($(VBW))' -DFF='($(FFK))' -DFF_DIR='($(FF_DIR).0)' -DFIX_SPD_REF=$(V3_FIX) -DTI_S='($(TI))' -DE_MAX='($(EMAX))' -DACC_MAX='($(ACC))' -DV_MAX='($(VMAX))' -DV_BOOST='($(BOOST))' -DACC_BOOST='($(BACC))'
+DEFS = -DV_MAX='($(VMAX))' -DACC_MAX='($(ACC))' -DFF_K='($(FFK))' -DTI_S='($(TI))' -DI_CLIP='($(ICLIP))' \
+       -DE_MAX='($(EMAX))' -DVBW='($(VBW))' -DV_BOOST='($(BOOST))' -DACC_BOOST='($(BACC))' \
+       -DCAL_RANGE=$(CAL_RANGE) -DREC_DIV=$(LOGDIV) -DDIAG=$(DIAG) -DDIAG_DELAY=$(DIAG_DELAY)
+
+# 引数を変えたときに作り直されるよう、main.o は毎回コンパイルする (FORCE)
 build/main.o: main.c Makefile FORCE | build
-	$(CC) $(CFLAGS) $(V3_DEFS) -c $< -o $@
-V3_OBJS = build/main.o build/control.o build/cr_startup_lpc13.o
-build/v3.axf: $(V3_OBJS) bb2.ld
-	$(CC) $(LDFLAGS) -o $@ $(V3_OBJS) -L$(V)/lib -lBalancer2_lib -lm
+	$(CC) $(CFLAGS) $(DEFS) -c $< -o $@
+V5_OBJS = build/main.o build/control.o build/cr_startup_lpc13.o
+build/v5.axf: $(V5_OBJS) bb2.ld
+	$(CC) $(LDFLAGS) -o $@ $(V5_OBJS) -L$(V)/lib -lBalancer2_lib -lm
 	$(SIZE) $@
-build/v3.bin: build/v3.axf
+build/v5.bin: build/v5.axf
 	$(OBJCOPY) -O binary $< $@
 	python3 lpc_checksum.py $@
-v3:
-	rm -f build/main.o build/v3.axf build/v3.bin
-	$(MAKE) build/v3.bin
-.PHONY: v3
-
-# v4 = v3 + 目標軌道フィードフォワード (前傾 a/g)。 make v4 FF_DIR=-1 で向き反転
-v4:
-	rm -f build/main.o build/v3.axf build/v3.bin
-	$(MAKE) build/v3.bin FFK=1 FF_DIR=$(FF_DIR)
-	cp build/v3.bin build/v4.bin
-.PHONY: v4
-
-# v5 = v4 + 車輪角速度オブザーバ。 make v5 VBW=20
-v5:
-	rm -f build/main.o build/v3.axf build/v3.bin
-	$(MAKE) build/v3.bin FFK=1 FF_DIR=$(FF_DIR) VOBS=1 VBW=$(VBW) LOGDIV=$(LOGDIV) NOTCH=$(NOTCH) NQ=$(NQ) ICLIP=$(ICLIP) DIAG=$(DIAG) DIAG_DELAY=$(DIAG_DELAY) CAL_RANGE=$(CAL_RANGE)
-	cp build/v3.bin build/v5.bin
+v5: build/v5.bin
 .PHONY: v5

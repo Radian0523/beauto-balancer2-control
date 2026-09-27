@@ -19,7 +19,7 @@ def make(args):
     r = subprocess.run(["make", "-C", FW, target] + extra, capture_output=True, text=True)
     if r.returncode != 0:
         sys.exit(r.stdout[-3000:] + r.stderr[-3000:])
-    size = [l for l in r.stdout.splitlines() if "v3.axf" in l or l.strip().startswith("text")]
+    size = [l for l in r.stdout.splitlines() if "v5.axf" in l or l.strip().startswith("text")]
     print("\n".join(size))
     path = os.path.join(FW, "build", f"{target}.bin")
     print(f"ビルド OK: {os.path.relpath(path, ROOT)}")

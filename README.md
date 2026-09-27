@@ -13,7 +13,7 @@
 
 ```
 bb2                 いつものコマンド (build / flash / log)
-firmware/           実機ファーム: main.c (v3〜v5 を make の引数で切り替え)、Makefile、bb2.ld、純正ライブラリ vendor/
+firmware/           実機ファーム: main.c (v5。調整値は make の引数)、Makefile、bb2.ld、純正ライブラリ vendor/
 tools/              Mac 側の道具: flash_mac.py (直接書き込み)、read_log.py (ログ)、bb2.py
 logs/               走行ログ (PNG と CSV)
 docs/01_調べた事実.md    ハード仕様・競技ルール・純正ファームの中身（出典つき）
