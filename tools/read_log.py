@@ -1,7 +1,7 @@
 """v4 の走行ログを吸い出してグラフと CSV にする。
 
 手順: 走らせる → ボタンで止める(倒れて止まってもよい) → 電源は切らずに USB を挿す → これを実行
-    .venv/bin/python firmware/read_log.py
+    .venv/bin/python tools/read_log.py
 logs/ に CSV と PNG を保存して、PNG を開く。sudo は不要。
 
 通信: 機体は USB HID "Balancer2" として見える。64 バイトのレポートで

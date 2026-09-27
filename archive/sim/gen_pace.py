@@ -11,7 +11,7 @@ def speed_of(x, v_nom=0.35):
 
 def main(step=0.10, v_nom=0.35, path=None):
     path = path or os.path.join(os.path.dirname(os.path.abspath(__file__)), "..",
-                                "firmware", "pace.h")
+                                "kf_firmware", "pace.h")
     xs = np.arange(0.0, MIS.GOAL + 0.6, step)
     rows = [(x, MIS.path_y(x), speed_of(x, v_nom)) for x in xs]
     with open(path, "w") as f:

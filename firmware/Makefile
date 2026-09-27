@@ -1,38 +1,24 @@
-# Beauto Balancer 2 用ファームのビルド。 `make` で build/bb2.bin ができる。
-# 書き込み: USB で繋ぐと出る CRP DISABLE ドライブの firmware.bin を消して bb2.bin をコピー。
+# Beauto Balancer 2 用ファームのビルド。 `make` で build/v5.bin ができる。
+# 書き込みは ../bb2 flash v5 (Mac ではドライブがマウントされないので ../tools/flash_mac.py で直接書く)。
 TOOL ?= /Applications/ArmGNUToolchain/15.3.rel1/arm-none-eabi/bin/arm-none-eabi-
 CC      = $(TOOL)gcc
 OBJCOPY = $(TOOL)objcopy
 SIZE    = $(TOOL)size
 
 V = vendor
-GYRO ?= +1
-WHEEL ?= +1
-CUR ?= +1
-SIGNS = -DSIGN_GYRO='($(GYRO).0f)' -DSIGN_WHEEL='($(WHEEL).0f)' -DSIGN_CUR='($(CUR).0f)'
-
-CFLAGS  = $(SIGNS) -mcpu=cortex-m3 -mthumb -O0 -ffunction-sections -fdata-sections \
+CFLAGS  = -mcpu=cortex-m3 -mthumb -O0 -ffunction-sections -fdata-sections \
           -fcommon -fno-builtin -D__USE_CMSIS=Balancer2_lib \
           -I. -I$(V) -I$(V)/lib -Wall -Wno-unused-variable
 LDFLAGS = -mcpu=cortex-m3 -mthumb -nostartfiles --specs=nano.specs --specs=nosys.specs \
           -Wl,--gc-sections -Wl,-Map=build/bb2.map -T bb2.ld
 
-SRCS = main_bb2.c bb2_control.c $(V)/control.c $(V)/cr_startup_lpc13.c
-OBJS = $(patsubst %.c,build/%.o,$(notdir $(SRCS)))
 vpath %.c . $(V)
 
-all: build/bb2.bin
+# 既定は v5。 make だけで build/v5.bin ができる
+all: v5
 
-build/%.o: %.c bb2_control.h gains.h pace.h Makefile | build
+build/%.o: %.c Makefile | build
 	$(CC) $(CFLAGS) -c $< -o $@
-
-build/bb2.axf: $(OBJS) bb2.ld
-	$(CC) $(LDFLAGS) -o $@ $(OBJS) -L$(V)/lib -lBalancer2_lib -lm
-	$(SIZE) $@
-
-build/bb2.bin: build/bb2.axf
-	$(OBJCOPY) -O binary $< $@
-	python3 lpc_checksum.py $@
 
 build:
 	mkdir -p build
@@ -40,10 +26,11 @@ build:
 clean:
 	rm -rf build
 
-.PHONY: all clean
+.PHONY: all clean FORCE
+FORCE:
 
 # 切り分け用: 純正サンプル(Default)をこの環境でビルドしたもの。
-# これで立つのに bb2.bin で倒れるなら、原因はビルド環境ではなく制御側(符号・ゲイン)。
+# これで立つのに自作ファームで倒れるなら、原因はビルド環境ではなく制御側。 make stock
 STOCK_OBJS = build/stock_main.o build/control.o build/cr_startup_lpc13.o
 build/stock.axf: $(STOCK_OBJS) bb2.ld
 	$(CC) $(LDFLAGS) -o $@ $(STOCK_OBJS) -L$(V)/lib -lBalancer2_lib -lm
@@ -53,26 +40,7 @@ build/stock.bin: build/stock.axf
 stock: build/stock.bin
 .PHONY: stock
 
-# v2: 純正の制御 + 直立→直進。 make v2 SPEED=0.15 HOLD=15 DIR=1 FIX=0
-SPEED ?= 0.15
-HOLD ?= 15
-DIR ?= 1
-FIX ?= 0
-V2_DEFS = -DV_RUN='($(SPEED))' -DHOLD_S='($(HOLD).0)' -DRUN_DIR='($(DIR).0)' -DFIX_SPD_REF=$(FIX)
-build/main_v2.o: main_v2.c Makefile FORCE | build
-	$(CC) $(CFLAGS) $(V2_DEFS) -c $< -o $@
-V2_OBJS = build/main_v2.o build/control.o build/cr_startup_lpc13.o
-build/v2.axf: $(V2_OBJS) bb2.ld
-	$(CC) $(LDFLAGS) -o $@ $(V2_OBJS) -L$(V)/lib -lBalancer2_lib -lm
-	$(SIZE) $@
-build/v2.bin: build/v2.axf
-	$(OBJCOPY) -O binary $< $@
-	python3 lpc_checksum.py $@
-v2: build/v2.bin
-FORCE:
-.PHONY: v2 FORCE
-
-# v3: コントローラ操縦 + 段差・坂対策。 make v3 TI=2 EMAX=4 ACC=0.5 VMAX=0.2 BOOST=0.25 BACC=0.6
+# main.c の共通設定。v3 = コントローラ操縦 + 段差・坂対策。 make v3 TI=2 EMAX=4 ACC=0.5 VMAX=0.2 BOOST=0.25 BACC=0.6
 TI ?= 2
 EMAX ?= 4
 ACC ?= 0.5
@@ -88,28 +56,30 @@ LOGDIV ?= 20
 NOTCH ?= 0
 NQ ?= 2
 V3_DEFS = -DNOTCH=$(NOTCH) -DNQ='($(NQ))' -DREC_DIV=$(LOGDIV) -DVOBS=$(VOBS) -DVBW='($(VBW))' -DFF='($(FFK))' -DFF_DIR='($(FF_DIR).0)' -DFIX_SPD_REF=$(V3_FIX) -DTI_S='($(TI))' -DE_MAX='($(EMAX))' -DACC_MAX='($(ACC))' -DV_MAX='($(VMAX))' -DV_BOOST='($(BOOST))' -DACC_BOOST='($(BACC))'
-build/main_v3.o: main_v3.c Makefile FORCE | build
+build/main.o: main.c Makefile FORCE | build
 	$(CC) $(CFLAGS) $(V3_DEFS) -c $< -o $@
-V3_OBJS = build/main_v3.o build/control.o build/cr_startup_lpc13.o
+V3_OBJS = build/main.o build/control.o build/cr_startup_lpc13.o
 build/v3.axf: $(V3_OBJS) bb2.ld
 	$(CC) $(LDFLAGS) -o $@ $(V3_OBJS) -L$(V)/lib -lBalancer2_lib -lm
 	$(SIZE) $@
 build/v3.bin: build/v3.axf
 	$(OBJCOPY) -O binary $< $@
 	python3 lpc_checksum.py $@
-v3: build/v3.bin
+v3:
+	rm -f build/main.o build/v3.axf build/v3.bin
+	$(MAKE) build/v3.bin
 .PHONY: v3
 
 # v4 = v3 + 目標軌道フィードフォワード (前傾 a/g)。 make v4 FF_DIR=-1 で向き反転
 v4:
-	rm -f build/main_v3.o build/v3.axf build/v3.bin
-	$(MAKE) v3 FFK=1 FF_DIR=$(FF_DIR)
+	rm -f build/main.o build/v3.axf build/v3.bin
+	$(MAKE) build/v3.bin FFK=1 FF_DIR=$(FF_DIR)
 	cp build/v3.bin build/v4.bin
 .PHONY: v4
 
 # v5 = v4 + 車輪角速度オブザーバ。 make v5 VBW=20
 v5:
-	rm -f build/main_v3.o build/v3.axf build/v3.bin
-	$(MAKE) v3 FFK=1 FF_DIR=$(FF_DIR) VOBS=1 VBW=$(VBW) LOGDIV=$(LOGDIV) NOTCH=$(NOTCH) NQ=$(NQ)
+	rm -f build/main.o build/v3.axf build/v3.bin
+	$(MAKE) build/v3.bin FFK=1 FF_DIR=$(FF_DIR) VOBS=1 VBW=$(VBW) LOGDIV=$(LOGDIV) NOTCH=$(NOTCH) NQ=$(NQ)
 	cp build/v3.bin build/v5.bin
 .PHONY: v5

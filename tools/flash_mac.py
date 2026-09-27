@@ -7,8 +7,8 @@ firmware.bin のデータ領域(FAT を読んで場所を求める)へ書き込�
 Linux でよく使われる `dd ... of=firmware.bin conv=notrunc` と同じことをしている。
 
 使い方 (機体はボタンを押しながら USB を差して書き込みモードにしておく):
-    sudo .venv/bin/python firmware/flash_mac.py                        # 読むだけ(確認)
-    sudo .venv/bin/python firmware/flash_mac.py firmware/build/bb2.bin  # 書き込み
+    sudo .venv/bin/python tools/flash_mac.py                        # 読むだけ(確認)
+    sudo .venv/bin/python tools/flash_mac.py firmware/build/bb2.bin  # 書き込み
 sudo が要るのは macOS のドライバから USB を奪うため。
 """
 import struct

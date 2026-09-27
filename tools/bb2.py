@@ -10,17 +10,18 @@ import subprocess
 import sys
 import time
 
-HERE = os.path.dirname(os.path.abspath(__file__))
+HERE = os.path.dirname(os.path.abspath(__file__))      # tools/
 ROOT = os.path.dirname(HERE)
+FW = os.path.join(ROOT, "firmware")
 def make(args):
     target = args[0] if args and "=" not in args[0] else "v5"
     extra = [a for a in args if "=" in a]
-    r = subprocess.run(["make", "-C", HERE, target] + extra, capture_output=True, text=True)
+    r = subprocess.run(["make", "-C", FW, target] + extra, capture_output=True, text=True)
     if r.returncode != 0:
         sys.exit(r.stdout[-3000:] + r.stderr[-3000:])
     size = [l for l in r.stdout.splitlines() if "v3.axf" in l or l.strip().startswith("text")]
     print("\n".join(size))
-    path = os.path.join(HERE, "build", f"{target}.bin")
+    path = os.path.join(FW, "build", f"{target}.bin")
     print(f"ビルド OK: {os.path.relpath(path, ROOT)}")
     return path
 

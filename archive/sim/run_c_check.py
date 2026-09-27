@@ -8,7 +8,7 @@ from sensors import Sensors
 import mission as MIS, sim
 from run_ablation import perturb
 
-LIB = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "out", "libbb2.dylib")
+LIB = os.path.join(os.path.dirname(os.path.abspath(__file__)), "out", "libbb2.dylib")
 
 
 class Meas(ct.Structure):
@@ -27,14 +27,14 @@ def build_if_needed():
     """gains.h / pace.h / bb2_control.c のどれかが新しければビルドし直す"""
     import subprocess, glob
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    srcs = glob.glob(os.path.join(root, "firmware", "*.c")) + \
-           glob.glob(os.path.join(root, "firmware", "*.h"))
+    srcs = glob.glob(os.path.join(root, "kf_firmware", "*.c")) + \
+           glob.glob(os.path.join(root, "kf_firmware", "*.h"))
     need = (not os.path.exists(LIB)) or \
            any(os.path.getmtime(f) > os.path.getmtime(LIB) for f in srcs)
     if need:
-        os.makedirs(os.path.join(root, "out"), exist_ok=True)
-        cmd = ["cc", "-O2", "-Wall", "-std=c99", "-I", os.path.join(root, "firmware"),
-               "-shared", "-fPIC", os.path.join(root, "firmware", "bb2_control.c"),
+        os.makedirs(os.path.dirname(LIB), exist_ok=True)
+        cmd = ["cc", "-O2", "-Wall", "-std=c99", "-I", os.path.join(root, "kf_firmware"),
+               "-shared", "-fPIC", os.path.join(root, "kf_firmware", "bb2_control.c"),
                "-o", LIB, "-lm"]
         subprocess.run(cmd, check=True)
         print("(C をビルドしました)")

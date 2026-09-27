@@ -1,6 +1,7 @@
 __pycache__/
 *.pyc
-out/*.dylib
-out/*.so
+archive/sim/out/*.dylib
+archive/sim/out/*.so
 firmware/build/
 .venv/
+.DS_Store

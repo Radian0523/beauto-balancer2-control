@@ -10,7 +10,7 @@ from controllers import ModernCtl
 from run_ablation import perturb
 import sim, mission as MIS
 
-OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "out")
+OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "out")
 plt.rcParams["font.family"] = ["Hiragino Sans", "Arial Unicode MS", "sans-serif"]
 plt.rcParams["axes.unicode_minus"] = False
 
