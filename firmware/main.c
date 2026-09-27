@@ -47,6 +47,12 @@
 #ifndef E_MAX
 #define E_MAX     (4.0)     /* EMAX: 走行中の車輪角のずれの上限 [rad] (1 rad = 2.1 cm) */
 #endif
+#ifndef K_BR
+#define K_BR      (1.0)     /* KBR: 本体角速度のゲインに掛ける倍率 (純正 = 1)。細かい振動を減らす試し用 */
+#endif
+#ifndef K_WR
+#define K_WR      (1.0)     /* KWR: 車輪角速度のゲインに掛ける倍率 (純正 = 1)。同上 */
+#endif
 #ifndef VBW
 #define VBW       (20.0)    /* VBW: 車輪速度オブザーバの帯域 [Hz] */
 #endif
@@ -200,7 +206,7 @@ static void control(void)
     double kwa = memmap.values.GAIN_WHEEL_ANGLE;
     /* 本体の項 [v5] 目標前傾からのずれ */
     double body = memmap.values.GAIN_BODY * (memmap.values.GAIN_BODY_ANGLE * (memmap.values.BODY_ANGLE - th_ref)
-                + memmap.values.GAIN_BODY_ANGULAR_SPD * (memmap.values.BODY_ANGULAR_SPD - dth_ref));
+                + memmap.values.GAIN_BODY_ANGULAR_SPD * K_BR * (memmap.values.BODY_ANGULAR_SPD - dth_ref));
 
     /* 目標車輪角 = 目標角速度の積分 (純正と同じ) */
     ref_l += memmap.values.T_SPD_L / MAIN_CYCLE;
@@ -226,8 +232,8 @@ static void control(void)
     sl = spd_l - memmap.values.T_SPD_L;
     sr = spd_r - memmap.values.T_SPD_R;
 
-    outL = body + kw * (kwa * el + memmap.values.GAIN_WHEEL_ANGULAR_SPD * sl);
-    outR = body + kw * (kwa * er + memmap.values.GAIN_WHEEL_ANGULAR_SPD * sr);
+    outL = body + kw * (kwa * el + memmap.values.GAIN_WHEEL_ANGULAR_SPD * K_WR * sl);
+    outR = body + kw * (kwa * er + memmap.values.GAIN_WHEEL_ANGULAR_SPD * K_WR * sr);
 
 #if TI_S > 0
     /* [v5] 坂対策: 坂では重力で押し戻され続け、純正は「ずれた分だけ押し返す」だけなので下がりっぱなしになる。
