@@ -72,13 +72,13 @@ v2: build/v2.bin
 FORCE:
 .PHONY: v2 FORCE
 
-# v3: コントローラ操縦 + 段差・坂対策。 make v3 TI=2 EMAX=4 ACC=0.5 VMAX=0.2 BOOST=0.35 BACC=1.0
+# v3: コントローラ操縦 + 段差・坂対策。 make v3 TI=2 EMAX=4 ACC=0.5 VMAX=0.2 BOOST=0.25 BACC=0.6
 TI ?= 2
 EMAX ?= 4
 ACC ?= 0.5
 VMAX ?= 0.2
-BOOST ?= 0.35
-BACC ?= 1.0
+BOOST ?= 0.25
+BACC ?= 0.6
 V3_FIX ?= 1
 V3_DEFS = -DFIX_SPD_REF=$(V3_FIX) -DTI_S='($(TI))' -DE_MAX='($(EMAX))' -DACC_MAX='($(ACC))' -DV_MAX='($(VMAX))' -DV_BOOST='($(BOOST))' -DACC_BOOST='($(BACC))'
 build/main_v3.o: main_v3.c Makefile FORCE | build

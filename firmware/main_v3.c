@@ -12,9 +12,9 @@
  *          目標だけ進むと、乗り越えた瞬間に溜まった分だけ飛び出して倒れる。上限で目標を引き戻す。
  *   ACC=0.5 スティック操作に対する加速度の上限 [m/s^2]。急な操作で倒れないように。
  *   VMAX=0.2 スティックを倒しきったときの速度 [m/s] (純正は約 0.2)。
- *   BOOST=0.35 コントローラのボタン(どれでも)を押すと BOOST_T 秒だけこの速度で前進する。
+ *   BOOST=0.25 コントローラのボタン(どれでも)を押すと BOOST_T 秒だけこの速度で前進する。
  *          段差はゆっくり当たるとモータの反動で本体が後ろへ倒れるので、勢いで乗り越える。
- *   BACC=1.0 ダッシュ時の加速度上限 [m/s^2]。
+ *   BACC=0.6 ダッシュ時の加速度上限 [m/s^2]。
  *
  *  操作: 純正と同じ。ボタン → 校正 → 立ててボタン → 左スティック上下で前後、右スティック左右で旋回。
  */
@@ -38,10 +38,10 @@
 #endif
 
 #ifndef V_BOOST
-#define V_BOOST (0.35)
+#define V_BOOST (0.25)
 #endif
 #ifndef ACC_BOOST
-#define ACC_BOOST (1.0)
+#define ACC_BOOST (0.6)
 #endif
 #define BOOST_T    (0.5)                   /* ダッシュの長さ [s] */
 
@@ -55,6 +55,7 @@ void LedBlink(unsigned char light, unsigned char blink, int msec, int callcycle)
 static double ref_l, ref_r;       /* 目標車輪角 [rad] */
 static double int_l, int_r;       /* 車輪角ずれの積分 [rad*s] */
 static double v_cmd, w_cmd;       /* 加速度制限後の前進速度 [m/s]、旋回 [rad/s] */
+static int ramping;               /* 加速/減速中なら 1 (積分を止める) */
 static int boost_left;            /* ダッシュの残り [周期] */
 static unsigned short btn_prev, btn_idle;   /* ボタン無しのときの値を基準にする */
 
@@ -87,6 +88,7 @@ static void pad_to_speed(void)
         dv = ACC_BOOST / MAIN_CYCLE;
     }
 
+    ramping = (v_tgt - v_cmd > 1e-4 || v_tgt - v_cmd < -1e-4);
     v_cmd += clamp(v_tgt - v_cmd, -dv, dv);
     w_cmd += clamp(w_tgt - w_cmd, -dw, dw);
     memmap.values.T_SPD_L = v_cmd / WHEEL_R + w_cmd;
@@ -126,8 +128,11 @@ static void control_v3(void)
 
 #if TI_S > 0
     /* 坂対策: ずれの積分。寄与は車輪角 I_CLIP rad ぶんまで */
-    int_l = clamp(int_l + el / MAIN_CYCLE, -I_CLIP * TI_S, I_CLIP * TI_S);
-    int_r = clamp(int_r + er / MAIN_CYCLE, -I_CLIP * TI_S, I_CLIP * TI_S);
+    /* 加速中の遅れは溜めない (溜めると加速後に余計な力として一気に出る) */
+    if (!ramping) {
+        int_l = clamp(int_l + el / MAIN_CYCLE, -I_CLIP * TI_S, I_CLIP * TI_S);
+        int_r = clamp(int_r + er / MAIN_CYCLE, -I_CLIP * TI_S, I_CLIP * TI_S);
+    }
     outL += kw * kwa * int_l / TI_S;
     outR += kw * kwa * int_r / TI_S;
 #endif
