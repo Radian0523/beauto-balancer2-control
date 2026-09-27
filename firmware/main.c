@@ -288,10 +288,19 @@ static short s16(double x)
     return (short)clamp(x, -32767.0, 32767.0);
 }
 
+#ifndef DIAG
+#define DIAG 0          /* 1: ジャイロ診断用の記録 (純正の傾き計算のずれの原因を調べる) */
+#endif
+#define GYRO_K (0.041849 * 0.125)          /* 純正 GyroProc と同じ換算: (GYRO_DATA - OFFSET) * GYRO_K = rad/s */
+static double dg_sum, dg_theta;            /* 生ジャイロの区間合計、生ジャイロを単純積分した傾き */
+static int dg_upd;                         /* 区間内で GYRO_DATA が変わった回数 (ジャイロの更新頻度) */
+static short dg_prev;
+
 static void log_reset(void)
 {
     log_idx = log_cnt = log_div = 0;
-    srcbuf[0] = 'L'; srcbuf[1] = 'G'; srcbuf[2] = LOG_NVAR; srcbuf[3] = REC_DIV;
+    dg_sum = dg_theta = 0.0; dg_upd = 0; dg_prev = memmap.values.GYRO_DATA;
+    srcbuf[0] = 'L'; srcbuf[1] = DIAG ? 'D' : 'G'; srcbuf[2] = LOG_NVAR; srcbuf[3] = REC_DIV;
     srcbuf[4] = srcbuf[5] = srcbuf[6] = srcbuf[7] = 0;
 }
 
@@ -300,6 +309,15 @@ static void log_sample(void)
     short v[LOG_NVAR];
     unsigned int i;
     uint8_t *p;
+#if DIAG
+    {
+        double g = memmap.values.GYRO_DATA - memmap.values.BODY_ANGULAR_SPD_OFFSET;
+        dg_sum += g;
+        dg_theta += g * GYRO_K / MAIN_CYCLE;
+        if (memmap.values.GYRO_DATA != dg_prev) dg_upd++;
+        dg_prev = memmap.values.GYRO_DATA;
+    }
+#endif
     if (++log_div < REC_DIV) return;
     log_div = 0;
     v[0] = s16(memmap.values.BODY_ANGLE * 1e4);                    /* 本体角 [0.1 mrad] */
@@ -310,6 +328,12 @@ static void log_sample(void)
     v[5] = s16((memmap.values.T_CURRENT_L + memmap.values.T_CURRENT_R) * 0.5);                  /* 電流指令 平均 */
     v[6] = s16((last_el + last_er) * 500.0);                        /* 車輪角のずれ 平均 [mrad] */
     v[7] = s16((int_l + int_r) * 500.0);                            /* ずれの積分 平均 [mrad*s] */
+#if DIAG
+    v[1] = s16(dg_sum / REC_DIV * 100.0);    /* 生ジャイロ (0点を引いた値) の区間平均 [0.01 LSB] */
+    v[4] = s16(dg_theta * 1e4);              /* 生ジャイロを単純積分した傾き [0.1 mrad] (0 に戻す処理なし) */
+    v[6] = (short)dg_upd;                    /* 区間内でジャイロの値が変わった回数 */
+    dg_sum = 0.0; dg_upd = 0;
+#endif
     p = srcbuf + LOG_HDR + log_idx * LOG_NVAR * 2;
     for (i = 0; i < LOG_NVAR; i++) {
         p[2 * i] = (uint8_t)(v[i] & 0xFF);

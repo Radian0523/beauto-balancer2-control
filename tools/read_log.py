@@ -24,6 +24,11 @@ NAMES = ["body_angle_rad", "theta_ref_rad", "body_rate_rad_s", "wheel_spd_rad_s"
          "target_spd_rad_s", "current_cmd", "wheel_err_rad", "wheel_err_int_rad_s"]
 SCALE = [1e-4, 1e-4, 1e-3, 1e-2, 1e-2, 1.0, 1e-3, 1e-3]
 WHEEL_R = 0.021
+# 診断版 (make v5 DIAG=1) の並び
+DIAG_NAMES = ["body_angle_rad", "gyro_raw_mean_lsb", "body_rate_rad_s", "wheel_spd_rad_s",
+              "theta_rawint_rad", "current_cmd", "gyro_updates", "wheel_err_int_rad_s"]
+DIAG_SCALE = [1e-4, 1e-2, 1e-3, 1e-2, 1e-4, 1.0, 1.0, 1e-3]
+GYRO_K = 0.041849 * 0.125     # 純正 GyroProc の換算 [rad/s per LSB]
 
 
 def open_dev():
@@ -61,8 +66,10 @@ def main():
     pid = struct.unpack("<H", read(dev, 0, 2))[0]
     print(f"接続 OK (Product_ID {pid:#06x})")
     hdr = read(dev, LOG_BASE, HDR)
-    if hdr[:2] != b"LG":
-        sys.exit("ログが無い。v4 で走らせたあと電源を切らずに繋いだか確認する。")
+    if hdr[:2] not in (b"LG", b"LD"):
+        sys.exit("ログが無い。v5 で走らせたあと電源を切らずに繋いだか確認する。")
+    diag = hdr[:2] == b"LD"
+    names, scale = (DIAG_NAMES, DIAG_SCALE) if diag else (NAMES, SCALE)
     nvar, div = hdr[2], hdr[3]
     idx, cnt = struct.unpack_from("<HH", hdr, 4)
     rate = 500.0 / div
@@ -77,14 +84,14 @@ def main():
     start = (idx - cnt) % cap                 # リングの古い順に並べ直す
     rows = [rows[(start + i) % cap] for i in range(cnt)]
     t = [(i - cnt + 1) / rate for i in range(cnt)]     # 止めた瞬間を 0 秒
-    data = [[v * s for v, s in zip(r, SCALE)] for r in rows]
+    data = [[v * k for v, k in zip(r, scale)] for r in rows]
 
     os.makedirs("logs", exist_ok=True)
     stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    path_csv = f"logs/run_{stamp}.csv"
+    path_csv = f"logs/{'diag' if diag else 'run'}_{stamp}.csv"
     with open(path_csv, "w", newline="") as f:
         w = csv.writer(f)
-        w.writerow(["t_s"] + NAMES)
+        w.writerow(["t_s"] + names)
         for ti, r in zip(t, data):
             w.writerow([f"{ti:.3f}"] + [f"{x:.5g}" for x in r])
 
@@ -94,6 +101,12 @@ def main():
     plt.rcParams["font.family"] = ["Hiragino Sans", "sans-serif"]
     col = list(zip(*data))
     deg = 57.29578
+    if diag:
+        plot_diag(plt, t, col, rate, stamp)
+        print(f"保存: {path_csv}\n保存: logs/diag_{stamp}.png")
+        summarize_diag(t, col, rate)
+        subprocess.run(["open", f"logs/diag_{stamp}.png"])
+        return
     fig, ax = plt.subplots(5, 1, figsize=(11, 12), sharex=True)
     ax[0].plot(t, [x * deg for x in col[0]], label="本体角 (純正の推定)")
     ax[0].plot(t, [x * deg for x in col[1]], "--", label="目標角 (前傾FF)")
@@ -118,6 +131,43 @@ def main():
     fig.savefig(path_png, dpi=110)
     print(f"保存: {path_csv}\n保存: {path_png}")
     subprocess.run(["open", path_png])
+
+
+def plot_diag(plt, t, col, rate, stamp):
+    deg = 57.29578
+    fig, ax = plt.subplots(5, 1, figsize=(11, 12), sharex=True)
+    ax[0].plot(t, [x * deg for x in col[0]], label="純正の傾き (0 に戻す処理あり)")
+    ax[0].plot(t, [x * deg for x in col[4]], label="生ジャイロを単純積分した傾き")
+    ax[0].set_ylabel("deg")
+    ax[1].plot(t, col[1], label="生ジャイロ (0点を引いた値) の区間平均")
+    ax[1].axhline(0, color="k", lw=0.5)
+    ax[1].set_ylabel("LSB")
+    ax[2].plot(t, col[6], label=f"区間 ({500 / rate:.0f} 周期) 内でジャイロの値が変わった回数")
+    ax[2].set_ylabel("回")
+    ax[3].plot(t, [x * WHEEL_R for x in col[3]], label="速度 (車輪)")
+    ax[3].set_ylabel("m/s")
+    ax[4].plot(t, col[5], label="電流指令")
+    ax[4].plot(t, [x * 1320 / 2 for x in col[7]], label="積分項の寄与 (電流換算)")
+    ax[4].set_ylabel("T_CURRENT")
+    ax[4].set_xlabel("止めた瞬間からの時間 [s]")
+    for a in ax:
+        a.grid(alpha=0.3)
+        a.legend(loc="upper left", fontsize=9)
+    fig.suptitle(f"ジャイロ診断ログ {stamp} ({rate:.0f} Hz)")
+    fig.tight_layout()
+    fig.savefig(f"logs/diag_{stamp}.png", dpi=110)
+
+
+def summarize_diag(t, col, rate):
+    n = len(t)
+    g = col[1]
+    th = col[4]
+    mean_g = sum(g) / n
+    drift = (th[-1] - th[0]) / (t[-1] - t[0]) * 57.29578 if n > 1 else 0.0
+    upd = sum(col[6]) / n
+    print(f"生ジャイロの平均: {mean_g:+.2f} LSB = {mean_g * GYRO_K * 57.29578:+.2f} deg/s")
+    print(f"単純積分した傾きのずれる速さ: {drift:+.2f} deg/s (全区間)")
+    print(f"ジャイロの値が変わった回数: 平均 {upd:.1f} 回 / {500 / rate:.0f} 周期")
 
 
 if __name__ == "__main__":
