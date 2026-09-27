@@ -12,6 +12,9 @@
  *          目標だけ進むと、乗り越えた瞬間に溜まった分だけ飛び出して倒れる。上限で目標を引き戻す。
  *   ACC=0.5 スティック操作に対する加速度の上限 [m/s^2]。急な操作で倒れないように。
  *   VMAX=0.2 スティックを倒しきったときの速度 [m/s] (純正は約 0.2)。
+ *   BOOST=0.35 コントローラのボタン(どれでも)を押すと BOOST_T 秒だけこの速度で前進する。
+ *          段差はゆっくり当たるとモータの反動で本体が後ろへ倒れるので、勢いで乗り越える。
+ *   BACC=1.0 ダッシュ時の加速度上限 [m/s^2]。
  *
  *  操作: 純正と同じ。ボタン → 校正 → 立ててボタン → 左スティック上下で前後、右スティック左右で旋回。
  */
@@ -34,6 +37,14 @@
 #define V_MAX   (0.2)
 #endif
 
+#ifndef V_BOOST
+#define V_BOOST (0.35)
+#endif
+#ifndef ACC_BOOST
+#define ACC_BOOST (1.0)
+#endif
+#define BOOST_T    (0.5)                   /* ダッシュの長さ [s] */
+
 #define WHEEL_R    (0.021)                 /* タイヤ半径 [m] */
 #define TURN_MAX   (9.42477796)            /* 旋回時の左右差 [rad/s] (純正と同じ) */
 #define DEADZONE   (10)                    /* スティックの中立の遊び */
@@ -44,6 +55,8 @@ void LedBlink(unsigned char light, unsigned char blink, int msec, int callcycle)
 static double ref_l, ref_r;       /* 目標車輪角 [rad] */
 static double int_l, int_r;       /* 車輪角ずれの積分 [rad*s] */
 static double v_cmd, w_cmd;       /* 加速度制限後の前進速度 [m/s]、旋回 [rad/s] */
+static int boost_left;            /* ダッシュの残り [周期] */
+static unsigned short btn_prev;
 
 static double stick(char raw)
 {
@@ -64,6 +77,15 @@ static void pad_to_speed(void)
     double w_tgt =  stick(memmap.values.PAD_AN_RX) * TURN_MAX;
     double dv = ACC_MAX / MAIN_CYCLE;
     double dw = 4.0 * TURN_MAX / MAIN_CYCLE;                   /* 旋回は 0.25 秒で最大まで */
+    unsigned short btn = memmap.values.PAD_BTN;
+
+    if (btn != 0 && btn_prev == 0) boost_left = (int)(BOOST_T * MAIN_CYCLE);  /* 押した瞬間 */
+    btn_prev = btn;
+    if (boost_left > 0) {
+        boost_left--;
+        v_tgt = V_BOOST;
+        dv = ACC_BOOST / MAIN_CYCLE;
+    }
 
     v_cmd += clamp(v_tgt - v_cmd, -dv, dv);
     w_cmd += clamp(w_tgt - w_cmd, -dw, dw);
@@ -124,6 +146,8 @@ static void reset_state(void)
     ClearVariables();
     ref_l = ref_r = int_l = int_r = 0.0;
     v_cmd = w_cmd = 0.0;
+    boost_left = 0;
+    btn_prev = memmap.values.PAD_BTN;
     memmap.values.T_SPD_L = memmap.values.T_SPD_R = 0.0;
 }
 
