@@ -206,7 +206,7 @@ static double notch(biquad_t *f, double x)
 }
 #endif
 
-static void control_v3(void)
+static void control(void)
 {
     double el, er, sl, sr, corr;
     double outL, outR;
@@ -438,7 +438,7 @@ int main(void)
             uint8_t slow = CycleProc();
             pad_to_speed();
             wheel_observer();
-            control_v3();
+            control();
             log_sample();
             if (slow == 1) {
                 if (isWhleeOverSpeed() != 0) break;
