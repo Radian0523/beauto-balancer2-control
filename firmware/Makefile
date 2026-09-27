@@ -52,3 +52,22 @@ build/stock.bin: build/stock.axf
 	python3 lpc_checksum.py $@
 stock: build/stock.bin
 .PHONY: stock
+
+# v2: 純正の制御 + 直立→直進。 make v2 SPEED=0.15 HOLD=15 DIR=1 FIX=0
+SPEED ?= 0.15
+HOLD ?= 15
+DIR ?= 1
+FIX ?= 0
+V2_DEFS = -DV_RUN='($(SPEED))' -DHOLD_S='($(HOLD).0)' -DRUN_DIR='($(DIR).0)' -DFIX_SPD_REF=$(FIX)
+build/main_v2.o: main_v2.c Makefile FORCE | build
+	$(CC) $(CFLAGS) $(V2_DEFS) -c $< -o $@
+V2_OBJS = build/main_v2.o build/control.o build/cr_startup_lpc13.o
+build/v2.axf: $(V2_OBJS) bb2.ld
+	$(CC) $(LDFLAGS) -o $@ $(V2_OBJS) -L$(V)/lib -lBalancer2_lib -lm
+	$(SIZE) $@
+build/v2.bin: build/v2.axf
+	$(OBJCOPY) -O binary $< $@
+	python3 lpc_checksum.py $@
+v2: build/v2.bin
+FORCE:
+.PHONY: v2 FORCE
