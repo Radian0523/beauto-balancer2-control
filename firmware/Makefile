@@ -85,7 +85,9 @@ FF_DIR ?= 1
 VOBS ?= 0
 VBW ?= 20
 LOGDIV ?= 20
-V3_DEFS = -DREC_DIV=$(LOGDIV) -DVOBS=$(VOBS) -DVBW='($(VBW))' -DFF='($(FFK))' -DFF_DIR='($(FF_DIR).0)' -DFIX_SPD_REF=$(V3_FIX) -DTI_S='($(TI))' -DE_MAX='($(EMAX))' -DACC_MAX='($(ACC))' -DV_MAX='($(VMAX))' -DV_BOOST='($(BOOST))' -DACC_BOOST='($(BACC))'
+NOTCH ?= 0
+NQ ?= 2
+V3_DEFS = -DNOTCH=$(NOTCH) -DNQ='($(NQ))' -DREC_DIV=$(LOGDIV) -DVOBS=$(VOBS) -DVBW='($(VBW))' -DFF='($(FFK))' -DFF_DIR='($(FF_DIR).0)' -DFIX_SPD_REF=$(V3_FIX) -DTI_S='($(TI))' -DE_MAX='($(EMAX))' -DACC_MAX='($(ACC))' -DV_MAX='($(VMAX))' -DV_BOOST='($(BOOST))' -DACC_BOOST='($(BACC))'
 build/main_v3.o: main_v3.c Makefile FORCE | build
 	$(CC) $(CFLAGS) $(V3_DEFS) -c $< -o $@
 V3_OBJS = build/main_v3.o build/control.o build/cr_startup_lpc13.o
@@ -108,6 +110,6 @@ v4:
 # v5 = v4 + 車輪角速度オブザーバ。 make v5 VBW=20
 v5:
 	rm -f build/main_v3.o build/v3.axf build/v3.bin
-	$(MAKE) v3 FFK=1 FF_DIR=$(FF_DIR) VOBS=1 VBW=$(VBW) LOGDIV=$(LOGDIV)
+	$(MAKE) v3 FFK=1 FF_DIR=$(FF_DIR) VOBS=1 VBW=$(VBW) LOGDIV=$(LOGDIV) NOTCH=$(NOTCH) NQ=$(NQ)
 	cp build/v3.bin build/v5.bin
 .PHONY: v5

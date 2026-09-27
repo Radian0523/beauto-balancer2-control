@@ -23,6 +23,9 @@
  *   VOBS=1 (v5) 車輪角速度をオブザーバで推定する。純正はエンコーダ差分 (1 カウント = 6.2 rad/s 刻み)
  *          をそのまま使うため速度項 (ゲイン 396) が ±2500 程度の電流のガタつきを生み、常に細かく振動していた。
  *          車輪角を追いかける 2 次の追従オブザーバ (帯域 VBW Hz, 臨界減衰) で滑らかな角速度を得る。
+ *   NOTCH=11 電流指令に f0 [Hz] のノッチフィルタ (Q=NQ) を掛ける。250Hz ログで 11Hz の
+ *          自励振動 (本体角速度が矩形波 = ギアのガタ) が見えたため、その周波数だけループゲインを下げる。
+ *          0 で無効。
  *
  *  操作: 純正と同じ。ボタン → 校正 → 立ててボタン → 左スティック上下で前後、右スティック左右で旋回。
  */
@@ -67,6 +70,12 @@
 #endif
 #ifndef VBW
 #define VBW     (20.0)                     /* 速度オブザーバの帯域 [Hz] */
+#endif
+#ifndef NOTCH
+#define NOTCH   (0)                        /* ノッチ周波数 [Hz]、0 で無効 */
+#endif
+#ifndef NQ
+#define NQ      (2.0)
 #endif
 #define K_V        (4.0)                   /* 速度誤差 → 加速度 [1/s] */
 #define GRAV       (9.81)
@@ -168,6 +177,33 @@ static void pad_to_speed(void)
     memmap.values.T_SPD_R = v_cmd / WHEEL_R - w_cmd;
 }
 
+#if NOTCH > 0
+/* 双一次変換 (周波数プリワープ) のノッチ。左右で状態を分ける */
+typedef struct { double b0, b1, b2, a1, a2, x1, x2, y1, y2; } biquad_t;
+static biquad_t nf[2];
+static void notch_init(void)
+{
+    double w0 = 2.0 * 3.14159265 * NOTCH / MAIN_CYCLE;
+    /* w0 は 0.14 rad 程度なのでテイラー展開で十分 (libm の sin/cos は 3KB 近くあり入らない) */
+    double w2 = w0 * w0;
+    double c = 1.0 - w2 / 2.0 * (1.0 - w2 / 12.0 * (1.0 - w2 / 30.0));
+    double sn = w0 * (1.0 - w2 / 6.0 * (1.0 - w2 / 20.0 * (1.0 - w2 / 42.0)));
+    double al = sn / (2.0 * NQ), a0 = 1.0 + al;
+    int i;
+    for (i = 0; i < 2; i++) {
+        nf[i].b0 = 1.0 / a0; nf[i].b1 = -2.0 * c / a0; nf[i].b2 = 1.0 / a0;
+        nf[i].a1 = -2.0 * c / a0; nf[i].a2 = (1.0 - al) / a0;
+        nf[i].x1 = nf[i].x2 = nf[i].y1 = nf[i].y2 = 0.0;
+    }
+}
+static double notch(biquad_t *f, double x)
+{
+    double y = f->b0 * x + f->b1 * f->x1 + f->b2 * f->x2 - f->a1 * f->y1 - f->a2 * f->y2;
+    f->x2 = f->x1; f->x1 = x; f->y2 = f->y1; f->y1 = y;
+    return y;
+}
+#endif
+
 static void control_v3(void)
 {
     double el, er, sl, sr, corr;
@@ -221,6 +257,10 @@ static void control_v3(void)
 
     last_el = el;
     last_er = er;
+#if NOTCH > 0
+    outL = notch(&nf[0], outL);
+    outR = notch(&nf[1], outR);
+#endif
     memmap.values.T_CURRENT_L = (short)clamp(outL, -32767.0, 32767.0);
     memmap.values.T_CURRENT_R = (short)clamp(outR, -32767.0, 32767.0);
 }
@@ -287,6 +327,9 @@ static void reset_state(void)
     a_cmd = th_ref = dth_ref = 0.0;
     boost_left = 0;
     ob_init = 0;
+#if NOTCH > 0
+    notch_init();
+#endif
     btn_idle = btn_prev = memmap.values.PAD_BTN;
     memmap.values.T_SPD_L = memmap.values.T_SPD_R = 0.0;
 }
