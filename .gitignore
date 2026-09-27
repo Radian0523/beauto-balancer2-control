@@ -3,3 +3,4 @@ __pycache__/
 out/*.dylib
 out/*.so
 firmware/build/
+.venv/

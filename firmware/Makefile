@@ -11,7 +11,7 @@ WHEEL ?= +1
 CUR ?= +1
 SIGNS = -DSIGN_GYRO='($(GYRO).0f)' -DSIGN_WHEEL='($(WHEEL).0f)' -DSIGN_CUR='($(CUR).0f)'
 
-CFLAGS  = $(SIGNS) -mcpu=cortex-m3 -mthumb -Os -ffunction-sections -fdata-sections \
+CFLAGS  = $(SIGNS) -mcpu=cortex-m3 -mthumb -O0 -ffunction-sections -fdata-sections \
           -fcommon -fno-builtin -D__USE_CMSIS=Balancer2_lib \
           -I. -I$(V) -I$(V)/lib -Wall -Wno-unused-variable
 LDFLAGS = -mcpu=cortex-m3 -mthumb -nostartfiles --specs=nano.specs --specs=nosys.specs \
