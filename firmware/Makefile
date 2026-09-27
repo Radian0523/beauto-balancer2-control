@@ -56,8 +56,9 @@ LOGDIV ?= 20
 NOTCH ?= 0
 ICLIP ?= 8
 DIAG ?= 0
+DIAG_DELAY ?= 0
 NQ ?= 2
-V3_DEFS = -DDIAG=$(DIAG) -DI_CLIP='($(ICLIP))' -DNOTCH=$(NOTCH) -DNQ='($(NQ))' -DREC_DIV=$(LOGDIV) -DVOBS=$(VOBS) -DVBW='($(VBW))' -DFF='($(FFK))' -DFF_DIR='($(FF_DIR).0)' -DFIX_SPD_REF=$(V3_FIX) -DTI_S='($(TI))' -DE_MAX='($(EMAX))' -DACC_MAX='($(ACC))' -DV_MAX='($(VMAX))' -DV_BOOST='($(BOOST))' -DACC_BOOST='($(BACC))'
+V3_DEFS = -DDIAG=$(DIAG) -DDIAG_DELAY=$(DIAG_DELAY) -DI_CLIP='($(ICLIP))' -DNOTCH=$(NOTCH) -DNQ='($(NQ))' -DREC_DIV=$(LOGDIV) -DVOBS=$(VOBS) -DVBW='($(VBW))' -DFF='($(FFK))' -DFF_DIR='($(FF_DIR).0)' -DFIX_SPD_REF=$(V3_FIX) -DTI_S='($(TI))' -DE_MAX='($(EMAX))' -DACC_MAX='($(ACC))' -DV_MAX='($(VMAX))' -DV_BOOST='($(BOOST))' -DACC_BOOST='($(BACC))'
 build/main.o: main.c Makefile FORCE | build
 	$(CC) $(CFLAGS) $(V3_DEFS) -c $< -o $@
 V3_OBJS = build/main.o build/control.o build/cr_startup_lpc13.o
@@ -82,6 +83,6 @@ v4:
 # v5 = v4 + 車輪角速度オブザーバ。 make v5 VBW=20
 v5:
 	rm -f build/main.o build/v3.axf build/v3.bin
-	$(MAKE) build/v3.bin FFK=1 FF_DIR=$(FF_DIR) VOBS=1 VBW=$(VBW) LOGDIV=$(LOGDIV) NOTCH=$(NOTCH) NQ=$(NQ) ICLIP=$(ICLIP) DIAG=$(DIAG)
+	$(MAKE) build/v3.bin FFK=1 FF_DIR=$(FF_DIR) VOBS=1 VBW=$(VBW) LOGDIV=$(LOGDIV) NOTCH=$(NOTCH) NQ=$(NQ) ICLIP=$(ICLIP) DIAG=$(DIAG) DIAG_DELAY=$(DIAG_DELAY)
 	cp build/v3.bin build/v5.bin
 .PHONY: v5

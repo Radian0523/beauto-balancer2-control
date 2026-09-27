@@ -288,6 +288,9 @@ static short s16(double x)
     return (short)clamp(x, -32767.0, 32767.0);
 }
 
+#ifndef DIAG_DELAY
+#define DIAG_DELAY 0    /* >0: スタート後この秒数はモータを止めて記録だけ取る (診断用) */
+#endif
 #ifndef DIAG
 #define DIAG 0          /* 1: ジャイロ診断用の記録 (純正の傾き計算のずれの原因を調べる) */
 #endif
@@ -388,6 +391,20 @@ int main(void)
         reset_state();
         memmap.values.LOG_MODE = 0;      /* 純正のログ機能は止めておく (srcbuf を自前で使う) */
         log_reset();
+#if DIAG_DELAY > 0
+        /* 診断: 最初の DIAG_DELAY 秒はモータを止めたまま記録だけ取る (手で支えて静止させておく)。
+         * モータが止まっているときと動いているときでジャイロの 0 点が変わるかを見る。 */
+        {
+            int k;
+            for (k = 0; k < (int)(DIAG_DELAY * MAIN_CYCLE); k++) {
+                CycleProc();
+                log_sample();
+                LedBlink(0, 3, 100, MAIN_CYCLE);
+            }
+            setLED(2);
+            reset_state();          /* この時点の姿勢を 0° にしてから制御を始める (記録は消さない) */
+        }
+#endif
         CurrentControlEnable();
 
         while (1) {
