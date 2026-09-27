@@ -80,7 +80,7 @@ static void pad_to_speed(void)
     double dw = 4.0 * TURN_MAX / MAIN_CYCLE;                   /* 旋回は 0.25 秒で最大まで */
     unsigned short btn = memmap.values.PAD_BTN;
 
-    if (btn != btn_idle && btn_prev == btn_idle) boost_left = (int)(BOOST_T * MAIN_CYCLE);  /* 押した瞬間 */
+    if (V_BOOST > 0 && btn != btn_idle && btn_prev == btn_idle) boost_left = (int)(BOOST_T * MAIN_CYCLE);  /* 押した瞬間 */
     btn_prev = btn;
     if (boost_left > 0) {
         boost_left--;
