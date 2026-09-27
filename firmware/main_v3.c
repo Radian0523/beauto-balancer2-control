@@ -183,10 +183,14 @@ static void control_v3(void)
     /* 段差対策: ずれが E_MAX を超えたら目標のほうを引き戻す (押す力は E_MAX ぶんで頭打ち) */
     el = memmap.values.WHEEL_ANGLE_L - ref_l;
     er = memmap.values.WHEEL_ANGLE_R - ref_r;
-    if (el >  E_MAX) { ref_l = memmap.values.WHEEL_ANGLE_L - E_MAX; el =  E_MAX; }
-    if (el < -E_MAX) { ref_l = memmap.values.WHEEL_ANGLE_L + E_MAX; el = -E_MAX; }
-    if (er >  E_MAX) { ref_r = memmap.values.WHEEL_ANGLE_R - E_MAX; er =  E_MAX; }
-    if (er < -E_MAX) { ref_r = memmap.values.WHEEL_ANGLE_R + E_MAX; er = -E_MAX; }
+    /* 止まっているときは引き戻さない。引き戻すと、一定の力で押され続けたとき
+     * (傾き推定のずれなど) 目標が機体と一緒に動いてしまい、元の位置に戻らず流れ続ける。 */
+    if (v_cmd > 0.02 || v_cmd < -0.02) {
+        if (el >  E_MAX) { ref_l = memmap.values.WHEEL_ANGLE_L - E_MAX; el =  E_MAX; }
+        if (el < -E_MAX) { ref_l = memmap.values.WHEEL_ANGLE_L + E_MAX; el = -E_MAX; }
+        if (er >  E_MAX) { ref_r = memmap.values.WHEEL_ANGLE_R - E_MAX; er =  E_MAX; }
+        if (er < -E_MAX) { ref_r = memmap.values.WHEEL_ANGLE_R + E_MAX; er = -E_MAX; }
+    }
 
 #if FIX_SPD_REF
     sl = spd_l - memmap.values.T_SPD_L;
