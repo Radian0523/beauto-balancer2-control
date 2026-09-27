@@ -85,6 +85,54 @@
 #define DEADZONE   (10)                    /* スティックの中立の遊び */
 #define I_CLIP     (3.0)                   /* 積分の寄与を車輪角 3 rad ぶんまでに制限 */
 
+
+/* ------------------------------------------------------------ 実行時パラメータ
+ * 書き込み直さずに USB で変えられるよう、調整値は memmap に置く (tools: ./bb2 set NAME=値)。
+ * 起動時に目印 (USER_ARIA8) が無ければ上のコンパイル時の値を初期値として入れる。
+ * ./bb2 save でフラッシュに保存すると電源を切っても残る (ファームを書き込み直すと初期値に戻る)。
+ *   GAIN_OPTION1 = 前傾FFの係数      GAIN_OPTION2 = 積分の時定数 TI [s] (0 で無効)
+ *   GAIN_OPTION3 = 最高速度 [m/s]    GAIN_OPTION4 = 加速度上限 [m/s^2]
+ *   GAIN_OPTION5 = ダッシュ速度 (0 で無効)   USER_ARIA8 = 目印
+ *   (GAIN_OPTION6 は構造体の 352 バイト目以降にあり、USB 読み書きとフラッシュ保存の範囲外なので使わない)
+ *   USER_ARIA1 = ダッシュ加速度   USER_ARIA2 = ずれ上限 EMAX [rad]   USER_ARIA3 = ジャーク上限
+ *   純正ゲイン (GAIN_BODY 等) もそのまま memmap にあるので同じ方法で変えられる。
+ */
+#define P_MAGIC (5.0)
+static double p_ff, p_ti, p_vmax, p_acc, p_boost, p_bacc, p_emax, p_jerk;
+
+static double clampd(double x, double lo, double hi)
+{
+    return x < lo ? lo : (x > hi ? hi : x);
+}
+
+static void params_init(void)
+{
+    if (memmap.values.USER_ARIA8 != P_MAGIC) {
+        memmap.values.GAIN_OPTION1 = FF;
+        memmap.values.GAIN_OPTION2 = TI_S;
+        memmap.values.GAIN_OPTION3 = V_MAX;
+        memmap.values.GAIN_OPTION4 = ACC_MAX;
+        memmap.values.GAIN_OPTION5 = V_BOOST;
+        memmap.values.USER_ARIA1 = ACC_BOOST;
+        memmap.values.USER_ARIA2 = E_MAX;
+        memmap.values.USER_ARIA3 = JERK;
+        memmap.values.USER_ARIA8 = P_MAGIC;
+    }
+}
+
+/* 走行開始のたびに読み直す。おかしな値でも暴走しないよう範囲を制限する */
+static void params_load(void)
+{
+    p_ff    = clampd(memmap.values.GAIN_OPTION1, 0.0, 2.0);
+    p_ti    = memmap.values.GAIN_OPTION2 < 0.3 ? 0.0 : clampd(memmap.values.GAIN_OPTION2, 0.3, 20.0);
+    p_vmax  = clampd(memmap.values.GAIN_OPTION3, 0.0, 0.5);
+    p_acc   = clampd(memmap.values.GAIN_OPTION4, 0.05, 3.0);
+    p_boost = clampd(memmap.values.GAIN_OPTION5, 0.0, 0.6);
+    p_bacc  = clampd(memmap.values.USER_ARIA1, 0.05, 3.0);
+    p_emax  = clampd(memmap.values.USER_ARIA2, 0.5, 20.0);
+    p_jerk  = clampd(memmap.values.USER_ARIA3, 0.5, 50.0);
+}
+
 void LedBlink(unsigned char light, unsigned char blink, int msec, int callcycle);
 
 static double ref_l, ref_r;       /* 目標車輪角 [rad] */
@@ -141,18 +189,18 @@ static double clamp(double x, double lo, double hi)
 /* スティック → 目標車輪角速度 T_SPD [rad/s]。500Hz で呼ぶ。 */
 static void pad_to_speed(void)
 {
-    double v_tgt = -stick(memmap.values.PAD_AN_LY) * V_MAX;    /* 前に倒すと負 → 前進 */
+    double v_tgt = -stick(memmap.values.PAD_AN_LY) * p_vmax;    /* 前に倒すと負 → 前進 */
     double w_tgt =  stick(memmap.values.PAD_AN_RX) * TURN_MAX;
-    double dv = ACC_MAX / MAIN_CYCLE;
+    double dv = p_acc / MAIN_CYCLE;
     double dw = 4.0 * TURN_MAX / MAIN_CYCLE;                   /* 旋回は 0.25 秒で最大まで */
     unsigned short btn = memmap.values.PAD_BTN;
 
-    if (V_BOOST > 0 && btn != btn_idle && btn_prev == btn_idle) boost_left = (int)(BOOST_T * MAIN_CYCLE);  /* 押した瞬間 */
+    if (p_boost > 0 && btn != btn_idle && btn_prev == btn_idle) boost_left = (int)(BOOST_T * MAIN_CYCLE);  /* 押した瞬間 */
     btn_prev = btn;
     if (boost_left > 0) {
         boost_left--;
-        v_tgt = V_BOOST;
-        dv = ACC_BOOST / MAIN_CYCLE;
+        v_tgt = p_boost;
+        dv = p_bacc / MAIN_CYCLE;
     }
 
 #if FF
@@ -161,11 +209,11 @@ static void pad_to_speed(void)
          * その加速度に見合った前傾 a/g を本体の目標にする */
         double amax = dv * MAIN_CYCLE;
         double a_des = clamp(K_V * (v_tgt - v_cmd), -amax, amax);
-        double a_new = a_cmd + clamp(a_des - a_cmd, -JERK / MAIN_CYCLE, JERK / MAIN_CYCLE);
-        dth_ref = -FF_DIR * FF * (a_new - a_cmd) * MAIN_CYCLE / GRAV;
+        double a_new = a_cmd + clamp(a_des - a_cmd, -p_jerk / MAIN_CYCLE, p_jerk / MAIN_CYCLE);
+        dth_ref = -FF_DIR * p_ff * (a_new - a_cmd) * MAIN_CYCLE / GRAV;
         a_cmd = a_new;
         v_cmd += a_cmd / MAIN_CYCLE;
-        th_ref = -FF_DIR * FF * a_cmd / GRAV;
+        th_ref = -FF_DIR * p_ff * a_cmd / GRAV;
         ramping = (a_cmd > 0.01 || a_cmd < -0.01);
     }
 #else
@@ -216,16 +264,16 @@ static void control_v3(void)
     ref_l += memmap.values.T_SPD_L / MAIN_CYCLE;
     ref_r += memmap.values.T_SPD_R / MAIN_CYCLE;
 
-    /* 段差対策: ずれが E_MAX を超えたら目標のほうを引き戻す (押す力は E_MAX ぶんで頭打ち) */
+    /* 段差対策: ずれが p_emax を超えたら目標のほうを引き戻す (押す力は p_emax ぶんで頭打ち) */
     el = memmap.values.WHEEL_ANGLE_L - ref_l;
     er = memmap.values.WHEEL_ANGLE_R - ref_r;
     /* 止まっているときは引き戻さない。引き戻すと、一定の力で押され続けたとき
      * (傾き推定のずれなど) 目標が機体と一緒に動いてしまい、元の位置に戻らず流れ続ける。 */
     if (v_cmd > 0.02 || v_cmd < -0.02) {
-        if (el >  E_MAX) { ref_l = memmap.values.WHEEL_ANGLE_L - E_MAX; el =  E_MAX; }
-        if (el < -E_MAX) { ref_l = memmap.values.WHEEL_ANGLE_L + E_MAX; el = -E_MAX; }
-        if (er >  E_MAX) { ref_r = memmap.values.WHEEL_ANGLE_R - E_MAX; er =  E_MAX; }
-        if (er < -E_MAX) { ref_r = memmap.values.WHEEL_ANGLE_R + E_MAX; er = -E_MAX; }
+        if (el >  p_emax) { ref_l = memmap.values.WHEEL_ANGLE_L - p_emax; el =  p_emax; }
+        if (el < -p_emax) { ref_l = memmap.values.WHEEL_ANGLE_L + p_emax; el = -p_emax; }
+        if (er >  p_emax) { ref_r = memmap.values.WHEEL_ANGLE_R - p_emax; er =  p_emax; }
+        if (er < -p_emax) { ref_r = memmap.values.WHEEL_ANGLE_R + p_emax; er = -p_emax; }
     }
 
 #if FIX_SPD_REF
@@ -239,16 +287,16 @@ static void control_v3(void)
     outL = body + kw * (kwa * el + memmap.values.GAIN_WHEEL_ANGULAR_SPD * sl);
     outR = body + kw * (kwa * er + memmap.values.GAIN_WHEEL_ANGULAR_SPD * sr);
 
-#if TI_S > 0
+    if (p_ti > 0) {
     /* 坂対策: ずれの積分。寄与は車輪角 I_CLIP rad ぶんまで */
     /* 加速中の遅れは溜めない (溜めると加速後に余計な力として一気に出る) */
     if (!ramping) {
-        int_l = clamp(int_l + el / MAIN_CYCLE, -I_CLIP * TI_S, I_CLIP * TI_S);
-        int_r = clamp(int_r + er / MAIN_CYCLE, -I_CLIP * TI_S, I_CLIP * TI_S);
+        int_l = clamp(int_l + el / MAIN_CYCLE, -I_CLIP * p_ti, I_CLIP * p_ti);
+        int_r = clamp(int_r + er / MAIN_CYCLE, -I_CLIP * p_ti, I_CLIP * p_ti);
     }
-    outL += kw * kwa * int_l / TI_S;
-    outR += kw * kwa * int_r / TI_S;
-#endif
+    outL += kw * kwa * int_l / p_ti;
+    outR += kw * kwa * int_r / p_ti;
+    }
 
     corr = memmap.values.GAIN_WHEEL_CORRELATION * (memmap.values.GAIN_WHEEL_CORRELATION_ANGLE * (el - er)
          + memmap.values.GAIN_WHEEL_CORRELATION_ANGULAR_SPD * (sl - sr));
@@ -322,6 +370,7 @@ static void log_sample(void)
 static void reset_state(void)
 {
     ClearVariables();
+    params_load();
     ref_l = ref_r = int_l = int_r = 0.0;
     v_cmd = w_cmd = 0.0;
     a_cmd = th_ref = dth_ref = 0.0;
@@ -337,6 +386,8 @@ static void reset_state(void)
 int main(void)
 {
     Balancer2Init();
+    params_init();
+    params_load();
     UARTInit(CBR_115200, non, 1);
     CurrentControlDisable();
     setLED(3);

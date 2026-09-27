@@ -1,0 +1,3 @@
+#!/bin/sh
+# Beauto Balancer 2 開発用コマンド。 ./bb2 help で使い方
+exec "$(dirname "$0")/.venv/bin/python" "$(dirname "$0")/firmware/bb2.py" "$@"

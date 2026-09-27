@@ -29,10 +29,18 @@ backend = usb.backend.libusb1.get_backend(
 class Bot:
     """USB Mass Storage Bulk-Only Transport の最小実装。"""
 
-    def __init__(self):
+    def __init__(self, wait=False):
         self.dev = usb.core.find(idVendor=VID, idProduct=PID, backend=backend)
+        t0 = time.time()
+        if self.dev is None and wait:
+            print("書き込みモードの機体を待っています (60 秒)...")
+        while self.dev is None and wait and time.time() - t0 < 60:
+            time.sleep(0.5)
+            self.dev = usb.core.find(idVendor=VID, idProduct=PID, backend=backend)
         if self.dev is None:
             sys.exit("書き込みモードの機体が見つからない。ボタンを押しながら USB を差し直す。")
+        if wait:
+            time.sleep(1.0)                          # 挿した直後は macOS のドライバが掴みにいくので少し待つ
         try:
             if self.dev.is_kernel_driver_active(0):
                 self.dev.detach_kernel_driver(0)
@@ -129,7 +137,10 @@ def locate_firmware(bot):
 
 
 def main():
-    bot = Bot()
+    wait = "--wait" in sys.argv
+    if wait:
+        sys.argv.remove("--wait")
+    bot = Bot(wait)
     inq = bot.cmd(bytes([0x12, 0, 0, 0, 36, 0]), 36)
     print("デバイス:", inq[8:36].decode(errors="replace").strip())
     for _ in range(10):                              # 準備できるまで待つ
