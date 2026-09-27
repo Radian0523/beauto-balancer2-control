@@ -71,6 +71,7 @@ void LedBlink(unsigned char light, unsigned char blink, int msec, int callcycle)
 
 static double ref_l, ref_r;       /* 目標車輪角 [rad] */
 static double int_l, int_r;       /* 車輪角ずれの積分 [rad*s] */
+static double last_el, last_er;   /* 直近の車輪角ずれ (ログ用) */
 static double v_cmd, w_cmd;       /* 加速度制限後の前進速度 [m/s]、旋回 [rad/s] */
 static double a_cmd;              /* 指令加速度 [m/s^2] (FF 時) */
 static double th_ref, dth_ref;     /* 本体の目標傾き [rad]・目標角速度 [rad/s] */
@@ -176,8 +177,64 @@ static void control_v3(void)
     outL -= corr;
     outR += corr;
 
+    last_el = el;
+    last_er = er;
     memmap.values.T_CURRENT_L = (short)clamp(outL, -32767.0, 32767.0);
     memmap.values.T_CURRENT_R = (short)clamp(outR, -32767.0, 32767.0);
+}
+
+
+/* ------------------------------------------------------------ 走行ログ
+ * 走行中の値を機体の RAM (純正ライブラリのログ用バッファ srcbuf, 4KB) に
+ * リングバッファで記録する。USB を繋がずに走らせ、止めたあと繋いで tools/read_log.py で吸い出す。
+ * 電源を切ると消えるので、止めたら電源はそのままで USB を挿す。
+ * srcbuf は USB の 'R' コマンドで 0x1000 番地から読める (純正のログ機能は使っていないので衝突しない)。
+ */
+#ifndef LOG_DIV
+#define LOG_DIV   (20)                       /* 500Hz / 20 = 25Hz で記録 */
+#endif
+#define LOG_NVAR  (8)
+#define LOG_HDR   (8)
+#define LOG_CAP   ((4096 - LOG_HDR) / (LOG_NVAR * 2))   /* 255 サンプル = 約 10 秒 */
+extern uint8_t srcbuf[4096];
+static unsigned int log_idx, log_cnt, log_div;
+
+static short s16(double x)
+{
+    return (short)clamp(x, -32767.0, 32767.0);
+}
+
+static void log_reset(void)
+{
+    log_idx = log_cnt = log_div = 0;
+    srcbuf[0] = 'L'; srcbuf[1] = 'G'; srcbuf[2] = LOG_NVAR; srcbuf[3] = LOG_DIV;
+    srcbuf[4] = srcbuf[5] = srcbuf[6] = srcbuf[7] = 0;
+}
+
+static void log_sample(void)
+{
+    short v[LOG_NVAR];
+    unsigned int i;
+    uint8_t *p;
+    if (++log_div < LOG_DIV) return;
+    log_div = 0;
+    v[0] = s16(memmap.values.BODY_ANGLE * 1e4);                    /* 本体角 [0.1 mrad] */
+    v[1] = s16(th_ref * 1e4);                                       /* 目標角 [0.1 mrad] */
+    v[2] = s16(memmap.values.BODY_ANGULAR_SPD * 1e3);              /* 本体角速度 [mrad/s] */
+    v[3] = s16((memmap.values.WHEEL_ANGULAR_SPD_L + memmap.values.WHEEL_ANGULAR_SPD_R) * 50.0);  /* 車輪角速度 平均 [0.01 rad/s] */
+    v[4] = s16((memmap.values.T_SPD_L + memmap.values.T_SPD_R) * 50.0);                        /* 目標車輪角速度 [0.01 rad/s] */
+    v[5] = s16((memmap.values.T_CURRENT_L + memmap.values.T_CURRENT_R) * 0.5);                  /* 電流指令 平均 */
+    v[6] = s16((last_el + last_er) * 500.0);                        /* 車輪角のずれ 平均 [mrad] */
+    v[7] = s16((int_l + int_r) * 500.0);                            /* ずれの積分 平均 [mrad*s] */
+    p = srcbuf + LOG_HDR + log_idx * LOG_NVAR * 2;
+    for (i = 0; i < LOG_NVAR; i++) {
+        p[2 * i] = (uint8_t)(v[i] & 0xFF);
+        p[2 * i + 1] = (uint8_t)((v[i] >> 8) & 0xFF);
+    }
+    log_idx = (log_idx + 1) % LOG_CAP;
+    if (log_cnt < LOG_CAP) log_cnt++;
+    srcbuf[4] = (uint8_t)log_idx; srcbuf[5] = (uint8_t)(log_idx >> 8);   /* 次に書く位置 */
+    srcbuf[6] = (uint8_t)log_cnt; srcbuf[7] = (uint8_t)(log_cnt >> 8);   /* 有効サンプル数 */
 }
 
 static void reset_state(void)
@@ -217,12 +274,15 @@ int main(void)
         while (getSW() == 1) __NOP();
         setLED(2);
         reset_state();
+        memmap.values.LOG_MODE = 0;      /* 純正のログ機能は止めておく (srcbuf を自前で使う) */
+        log_reset();
         CurrentControlEnable();
 
         while (1) {
             uint8_t slow = CycleProc();
             pad_to_speed();
             control_v3();
+            log_sample();
             if (slow == 1) {
                 if (isWhleeOverSpeed() != 0) break;
                 if (getSW() == 1) {
