@@ -77,7 +77,8 @@
 #define GRAV      (9.81)
 #define WHEEL_R   (0.021)           /* タイヤ半径 [m] */
 #define TURN_MAX  (9.42477796)      /* 旋回時の左右差 [rad/s] (純正と同じ) */
-#define DEADZONE  (10)              /* スティックの中立の遊び */
+#define DEADZONE  (10)              /* スティックの中立の遊び (スタート時の値からのずれで判断する) */
+#define NEUTRAL_MAX (30)            /* スタート時のスティックの値がこれより大きければ中立とはみなさない (触っていた) */
 
 void LedBlink(unsigned char light, unsigned char blink, int msec, int callcycle);
 
@@ -99,18 +100,25 @@ static double th_ref, dth_ref;      /* 本体の目標傾き [rad]・その変�
 static int ramping;                 /* 加速/減速中なら 1 (③ の積分を止める) */
 static int boost_left;              /* ダッシュの残り [周期] */
 static unsigned short btn_prev, btn_idle;   /* ボタンを押していないときの値を基準にする */
+static int ly0, rx0;                /* スタート時のスティックの値 = 中立。スティックは手を離してもぴったり 0 に戻らない */
 
-static double stick(char raw)
+static int neutral(char raw)
 {
     int v = (signed char)raw;
+    return (v > -NEUTRAL_MAX && v < NEUTRAL_MAX) ? v : 0;
+}
+
+static double stick(char raw, int zero)
+{
+    int v = (signed char)raw - zero;
     if (v > -DEADZONE && v < DEADZONE) return 0.0;
     return v / 128.0;
 }
 
 static void pad_to_speed(void)
 {
-    double v_tgt = -stick(memmap.values.PAD_AN_LY) * V_MAX;    /* 前に倒すと負 → 前進 */
-    double w_tgt =  stick(memmap.values.PAD_AN_RX) * TURN_MAX;
+    double v_tgt = -stick(memmap.values.PAD_AN_LY, ly0) * V_MAX;    /* 前に倒すと負 → 前進 */
+    double w_tgt =  stick(memmap.values.PAD_AN_RX, rx0) * TURN_MAX;
     double amax = ACC_MAX;
     double dw = 4.0 * TURN_MAX / MAIN_CYCLE;                   /* 旋回は 0.25 秒で最大まで */
     double a_des, a_new;
@@ -176,7 +184,7 @@ static void wheel_observer(void)
  * 純正 Control() と同じ形: 本体の傾き・傾く速さ・車輪角のずれ・車輪角速度のずれ に純正ゲインを掛けて足す。
  * 純正から変えたところ ([v5] の行)
  *   - 本体の傾きは直立ではなく ① の目標前傾 th_ref からのずれにする
- *   - 走行中だけ車輪角のずれに上限 E_MAX をかける (段差対策)
+ *   - 走行中だけ車輪角のずれ (左右の平均) に上限 E_MAX をかける (段差対策)
  *   - 車輪角速度は ② のオブザーバの値を使い、純正の単位の間違い (T_SPD / MAIN_CYCLE) を直す
  *   - 車輪角のずれの積分を足す (坂対策)
  */
@@ -202,13 +210,16 @@ static void control(void)
 
     /* [v5] 段差対策: 段差で車輪が詰まっている間も目標だけ進むと、乗り越えた瞬間に溜まったずれの分だけ
      * 飛び出して倒れる。ずれが E_MAX を超えたら目標のほうを引き戻す。
+     * 引き戻しは左右の平均に対して、左右同じだけ行う。左右別々に引き戻すと、片方の車輪だけ
+     * 上限に当たったときに左右の目標の差 (= 向くべき方向) が書き換わり、曲がったまま戻らなくなる。
      * 止まっているときは引き戻さない。一定の力で押され続けたとき (傾き推定のずれなど) に
      * 目標が機体と一緒に動いてしまい、元の位置に戻らず一方向に流れ続けるため。 */
     if (v_cmd > 0.02 || v_cmd < -0.02) {
-        if (el >  E_MAX) { ref_l = memmap.values.WHEEL_ANGLE_L - E_MAX; el =  E_MAX; }
-        if (el < -E_MAX) { ref_l = memmap.values.WHEEL_ANGLE_L + E_MAX; el = -E_MAX; }
-        if (er >  E_MAX) { ref_r = memmap.values.WHEEL_ANGLE_R - E_MAX; er =  E_MAX; }
-        if (er < -E_MAX) { ref_r = memmap.values.WHEEL_ANGLE_R + E_MAX; er = -E_MAX; }
+        double em = (el + er) * 0.5, d = 0.0;
+        if (em >  E_MAX) d = em - E_MAX;
+        if (em < -E_MAX) d = em + E_MAX;
+        ref_l += d; ref_r += d;
+        el -= d; er -= d;
     }
 
     /* [v5] 車輪角速度のずれ。純正は T_SPD / MAIN_CYCLE を引いていて、走行中は速度の項がブレーキになっていた */
@@ -249,11 +260,11 @@ static void control(void)
  * srcbuf は USB の 'R' コマンドで 0x1000 番地から読める (純正のログ機能は止めているので衝突しない)。
  *
  * 形式: 先頭 8 バイト = 'L', 'G'(通常)/'D'(診断), 変数の数, 間引き, 次に書く位置(2), 有効サンプル数(2)
- *       その後に 1 サンプル = int16 × 10 (リトルエンディアン)
+ *       その後に 1 サンプル = int16 × 11 (リトルエンディアン)
  */
-#define LOG_NVAR  (10)
+#define LOG_NVAR  (11)
 #define LOG_HDR   (8)
-#define LOG_CAP   ((4096 - LOG_HDR) / (LOG_NVAR * 2))   /* 204 サンプル (25Hz で約 8 秒) */
+#define LOG_CAP   ((4096 - LOG_HDR) / (LOG_NVAR * 2))   /* 185 サンプル (25Hz で約 7.4 秒) */
 extern uint8_t srcbuf[4096];
 static unsigned int log_idx, log_cnt, log_div;
 
@@ -300,8 +311,10 @@ static void log_sample(void)
     v[5] = s16((memmap.values.T_CURRENT_L + memmap.values.T_CURRENT_R) * 0.5);  /* 電流指令 平均 */
     v[6] = s16((last_el + last_er) * 500.0);                                    /* 車輪角のずれ 平均 [mrad] */
     v[7] = s16((int_l + int_r) * 500.0);                                        /* ずれの積分 平均 [mrad*s] */
-    v[8] = memmap.values.M_CURRENT_L - memmap.values.CURRENT_OFFSET_L;          /* 実際の電流 左 (0 点を引いた生値) */
-    v[9] = memmap.values.M_CURRENT_R - memmap.values.CURRENT_OFFSET_R;          /* 実際の電流 右 */
+    v[8] = s16(((memmap.values.M_CURRENT_L - memmap.values.CURRENT_OFFSET_L)
+              + (memmap.values.M_CURRENT_R - memmap.values.CURRENT_OFFSET_R)) * 0.5);  /* 実際の電流 平均 (生値) */
+    v[9] = s16((last_el - last_er) * 1e3);                                      /* 向きのずれ = 左右の車輪角のずれの差 [mrad] */
+    v[10] = s16(w_cmd * 100.0);                                                 /* 旋回の指令 [0.01 rad/s] */
 #if DIAG
     v[1] = s16(dg_sum / REC_DIV * 100.0);    /* 生ジャイロ (0 点を引いた値) の区間平均 [0.01 LSB] */
     v[4] = s16(dg_theta * 1e4);              /* 生ジャイロを単純積分した傾き [0.1 mrad] (0 に戻す処理なし) */
@@ -358,6 +371,8 @@ static void reset_state(void)
     boost_left = 0;
     ob_init = 0;
     btn_idle = btn_prev = memmap.values.PAD_BTN;
+    ly0 = neutral(memmap.values.PAD_AN_LY);
+    rx0 = neutral(memmap.values.PAD_AN_RX);
     memmap.values.T_SPD_L = memmap.values.T_SPD_R = 0.0;
 }
 

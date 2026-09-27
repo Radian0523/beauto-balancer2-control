@@ -29,9 +29,13 @@ DIAG_NAMES = ["body_angle_rad", "gyro_raw_mean_lsb", "body_rate_rad_s", "wheel_s
               "theta_rawint_rad", "current_cmd", "gyro_updates", "wheel_err_int_rad_s"]
 DIAG_SCALE = [1e-4, 1e-2, 1e-3, 1e-2, 1e-4, 1.0, 1.0, 1e-3]
 GYRO_K = 0.041849 * 0.125     # 純正 GyroProc の換算 [rad/s per LSB]
-# 10 変数版 (2026-09-27 夜から) は末尾に実際の電流 (左, 右) が付く
-EXTRA_NAMES = ["m_current_l", "m_current_r"]
-EXTRA_SCALE = [1.0, 1.0]
+# 末尾に付く列 (変数の数で見分ける)
+#   10 変数版: 実際の電流 (左, 右)
+#   11 変数版: 実際の電流 (左右平均), 向きのずれ (左右の車輪角のずれの差), 旋回の指令
+EXTRA = {
+    10: (["m_current_l", "m_current_r"], [1.0, 1.0]),
+    11: (["m_current", "yaw_err_rad", "turn_cmd_rad_s"], [1.0, 1e-3, 1e-2]),
+}
 
 
 def open_dev():
@@ -74,7 +78,8 @@ def main():
     diag = hdr[:2] == b"LD"
     names, scale = (DIAG_NAMES, DIAG_SCALE) if diag else (NAMES, SCALE)
     nvar, div = hdr[2], hdr[3]
-    names, scale = (names + EXTRA_NAMES)[:nvar], (scale + EXTRA_SCALE)[:nvar]
+    en, es = EXTRA.get(nvar, ([], []))
+    names, scale = (names + en)[:nvar], (scale + es)[:nvar]
     idx, cnt = struct.unpack_from("<HH", hdr, 4)
     rate = 500.0 / div
     cap = (4096 - HDR) // (nvar * 2)
@@ -111,7 +116,8 @@ def main():
         summarize_diag(t, col, rate)
         subprocess.run(["open", f"logs/diag_{stamp}.png"])
         return
-    fig, ax = plt.subplots(5, 1, figsize=(11, 12), sharex=True)
+    yaw = nvar >= 11
+    fig, ax = plt.subplots(6 if yaw else 5, 1, figsize=(11, 14 if yaw else 12), sharex=True)
     ax[0].plot(t, [x * deg for x in col[0]], label="本体角 (純正の推定)")
     ax[0].plot(t, [x * deg for x in col[1]], "--", label="目標角 (前傾FF)")
     ax[0].set_ylabel("deg")
@@ -121,14 +127,20 @@ def main():
     ax[2].plot(t, [x * WHEEL_R for x in col[4]], "--", label="目標速度")
     ax[2].set_ylabel("m/s")
     ax[3].plot(t, col[5], label="電流指令 (左右平均)")
-    if len(col) >= 10:
+    if nvar == 10:
         ax[3].plot(t, col[8], lw=0.8, alpha=0.7, label="実際の電流 左 (生値)")
         ax[3].plot(t, col[9], lw=0.8, alpha=0.7, label="実際の電流 右 (生値)")
+    elif nvar >= 11:
+        ax[3].plot(t, col[8], lw=0.8, alpha=0.8, label="実際の電流 左右平均 (生値)")
     ax[3].set_ylabel("T_CURRENT")
     ax[4].plot(t, [x * WHEEL_R * 100 for x in col[6]], label="目標とのずれ")
     ax[4].plot(t, [x * WHEEL_R * 100 for x in col[7]], label="ずれの積分 [cm*s]")
     ax[4].set_ylabel("cm")
-    ax[4].set_xlabel("止めた瞬間からの時間 [s]")
+    if yaw:
+        ax[5].plot(t, [x * WHEEL_R * 100 for x in col[9]], label="向きのずれ (左右の車輪のずれの差) [cm]")
+        ax[5].plot(t, col[10], label="旋回の指令 [rad/s] (0 以外ならスティックが効いている)")
+        ax[5].axhline(0, color="k", lw=0.5)
+    ax[-1].set_xlabel("止めた瞬間からの時間 [s]")
     for a in ax:
         a.grid(alpha=0.3)
         a.legend(loc="upper left", fontsize=9)

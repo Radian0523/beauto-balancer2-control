@@ -3,6 +3,7 @@
   ./bb2 build [v5]           ファームをビルド (make)。make の引数も渡せる: ./bb2 build v5 VBW=30
   ./bb2 flash [v5]           ビルドして書き込む。書き込みモードの機体が繋がるまで待つ (sudo のパスワードを聞かれる)
   ./bb2 log                  走行ログを吸い出してグラフ (logs/)。集計 (stats) も表示する
+  ./bb2 pad                  機体が受け取っているコントローラの値を表示 (スティックの中立のずれを見る)
   ./bb2 stats [CSV...]       ログを 止まっている/加速/一定速度/減速 に分けて集計・比較 (省略時は最新 3 本)
   パラメータは今まで通り make の引数で変える: ./bb2 flash v5 VMAX=0.25 BOOST=0.3
 """
@@ -45,12 +46,16 @@ def cmd_stats(args):
     sys.exit(subprocess.call([os.path.join(ROOT, ".venv", "bin", "python"), os.path.join(HERE, "log_stats.py")] + args, cwd=ROOT))
 
 
+def cmd_pad(_):
+    sys.exit(subprocess.call([os.path.join(ROOT, ".venv", "bin", "python"), os.path.join(HERE, "pad_check.py")], cwd=ROOT))
+
+
 def main():
     if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help", "help"):
         print(__doc__)
         return
     cmd, args = sys.argv[1], sys.argv[2:]
-    table = {"build": make, "flash": cmd_flash, "log": cmd_log, "stats": cmd_stats}
+    table = {"build": make, "flash": cmd_flash, "log": cmd_log, "stats": cmd_stats, "pad": cmd_pad}
     if cmd not in table:
         sys.exit(f"不明なコマンド: {cmd}\n{__doc__}")
     table[cmd](args)

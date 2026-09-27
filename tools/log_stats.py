@@ -57,16 +57,17 @@ def sd(xs):
 
 def current_tracking(rows):
     """実際の電流が指令にどれだけ付いてきているかを速度別に返す。実電流の列が無ければ None"""
-    if "m_current_l" not in rows[0]:
+    keys = [k for k in ("m_current_l", "m_current_r", "m_current") if k in rows[0]]
+    if not keys:
         return None
     cmd = [r["current_cmd"] for r in rows]
-    # 左右それぞれ、指令との相関の符号で向きをそろえてから平均する (モータの向きが逆でもよいように)
+    # 指令との相関の符号で向きをそろえてから平均する (モータの向きが逆でもよいように)
     act = []
-    for key in ("m_current_l", "m_current_r"):
+    for key in keys:
         m = [r[key] for r in rows]
         s = 1.0 if sum(c * x for c, x in zip(cmd, m)) >= 0 else -1.0
         act.append([s * x for x in m])
-    act = [(a + b) / 2 for a, b in zip(*act)]
+    act = [sum(v) / len(v) for v in zip(*act)]
     spd = [abs(r["wheel_spd_rad_s"]) * WHEEL_R for r in rows]
 
     def slope(idx):
@@ -121,6 +122,14 @@ def report(path):
             print("    → 速いときに電流が指令に届いていない。電圧 (逆起電力・電池) が限界の疑い")
         elif high:
             print("    → 速いときも電流は指令どおり出ている。速度の限界は制御側の問題")
+    if "yaw_err_rad" in use[0]:
+        still = [r for r in use if abs(r["turn_cmd_rad_s"]) < 1e-3]
+        turning = len(use) - len(still)
+        ye = [r["yaw_err_rad"] * WHEEL_R * 100 for r in use]
+        print(f"  向き: 旋回の指令が出ていた時間 {turning / len(use) * 100:.0f}%、"
+              f"向きのずれ 平均 {st.mean(ye):+.1f} cm 最大 {max(ye, key=abs):+.1f} cm")
+        if still and turning == 0:
+            print("    → スティックは中立。回ったならスティック以外 (左右の車輪の差) が原因")
     s = [r for r in use if phase(r) == "止まっている"]
     return {
         "name": name,
