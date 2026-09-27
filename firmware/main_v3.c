@@ -333,6 +333,7 @@ int main(void)
         }
         CurrentControlDisable();
         reset_state();
+        Wait(1000);      /* 止めた直後のボタンのチャタリングで再スタートして記録を消さないように */
     }
 }
 

@@ -68,6 +68,8 @@ def main():
     rate = 500.0 / div
     cap = (4096 - HDR) // (nvar * 2)
     print(f"{cnt} サンプル ({cnt / rate:.1f} 秒, {rate:.0f} Hz) を読み出し中...")
+    if cnt == 0:
+        sys.exit("記録が 0 件。止めたあとにもう一度スタートしてしまうと記録が消える (ボタンのチャタリングも含む)。")
     raw = read_block(dev, LOG_BASE + HDR, cap * nvar * 2)
     dev.close()
 
