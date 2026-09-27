@@ -20,6 +20,9 @@
  *          本体の目標傾きも a/g だけ前に倒し、加速度の変化 (ジャーク) も JERK で制限する。
  *          フィードバックゲインは純正のまま、ずれを直す役だけになる。
  *          FF_DIR=-1 で傾きの向きを反転 (加速で余計に倒れるならこれ)。
+ *   VOBS=1 (v5) 車輪角速度をオブザーバで推定する。純正はエンコーダ差分 (1 カウント = 6.2 rad/s 刻み)
+ *          をそのまま使うため速度項 (ゲイン 396) が ±2500 程度の電流のガタつきを生み、常に細かく振動していた。
+ *          車輪角を追いかける 2 次の追従オブザーバ (帯域 VBW Hz, 臨界減衰) で滑らかな角速度を得る。
  *
  *  操作: 純正と同じ。ボタン → 校正 → 立ててボタン → 左スティック上下で前後、右スティック左右で旋回。
  */
@@ -59,6 +62,12 @@
 #ifndef JERK
 #define JERK    (3.0)                      /* 加速度の変化率の上限 [m/s^3] */
 #endif
+#ifndef VOBS
+#define VOBS    (0)
+#endif
+#ifndef VBW
+#define VBW     (20.0)                     /* 速度オブザーバの帯域 [Hz] */
+#endif
 #define K_V        (4.0)                   /* 速度誤差 → 加速度 [1/s] */
 #define GRAV       (9.81)
 
@@ -72,6 +81,35 @@ void LedBlink(unsigned char light, unsigned char blink, int msec, int callcycle)
 static double ref_l, ref_r;       /* 目標車輪角 [rad] */
 static double int_l, int_r;       /* 車輪角ずれの積分 [rad*s] */
 static double last_el, last_er;   /* 直近の車輪角ずれ (ログ用) */
+static double ob_p[2], ob_v[2];   /* 速度オブザーバ: 推定車輪角・推定角速度 (左,右) */
+static int ob_init;
+static double spd_l, spd_r;       /* 制御に使う車輪角速度 */
+
+/* 車輪角 → 角速度の追従オブザーバ。 x̂' = v̂ + 2ωe,  v̂' = ω²e  (e = 測定 - 推定) */
+static void wheel_observer(void)
+{
+#if VOBS
+    const double w = 2.0 * 3.14159265 * VBW, dt = 1.0 / MAIN_CYCLE;
+    double m[2];
+    int i;
+    m[0] = memmap.values.WHEEL_ANGLE_L;
+    m[1] = memmap.values.WHEEL_ANGLE_R;
+    if (!ob_init) {
+        for (i = 0; i < 2; i++) { ob_p[i] = m[i]; ob_v[i] = 0.0; }
+        ob_init = 1;
+    }
+    for (i = 0; i < 2; i++) {
+        double e = m[i] - ob_p[i];
+        ob_p[i] += (ob_v[i] + 2.0 * w * e) * dt;
+        ob_v[i] += w * w * e * dt;
+    }
+    spd_l = ob_v[0];
+    spd_r = ob_v[1];
+#else
+    spd_l = memmap.values.WHEEL_ANGULAR_SPD_L;
+    spd_r = memmap.values.WHEEL_ANGULAR_SPD_R;
+#endif
+}
 static double v_cmd, w_cmd;       /* 加速度制限後の前進速度 [m/s]、旋回 [rad/s] */
 static double a_cmd;              /* 指令加速度 [m/s^2] (FF 時) */
 static double th_ref, dth_ref;     /* 本体の目標傾き [rad]・目標角速度 [rad/s] */
@@ -151,11 +189,11 @@ static void control_v3(void)
     if (er < -E_MAX) { ref_r = memmap.values.WHEEL_ANGLE_R + E_MAX; er = -E_MAX; }
 
 #if FIX_SPD_REF
-    sl = memmap.values.WHEEL_ANGULAR_SPD_L - memmap.values.T_SPD_L;
-    sr = memmap.values.WHEEL_ANGULAR_SPD_R - memmap.values.T_SPD_R;
+    sl = spd_l - memmap.values.T_SPD_L;
+    sr = spd_r - memmap.values.T_SPD_R;
 #else
-    sl = memmap.values.WHEEL_ANGULAR_SPD_L - memmap.values.T_SPD_L / MAIN_CYCLE;
-    sr = memmap.values.WHEEL_ANGULAR_SPD_R - memmap.values.T_SPD_R / MAIN_CYCLE;
+    sl = spd_l - memmap.values.T_SPD_L / MAIN_CYCLE;
+    sr = spd_r - memmap.values.T_SPD_R / MAIN_CYCLE;
 #endif
 
     outL = body + kw * (kwa * el + memmap.values.GAIN_WHEEL_ANGULAR_SPD * sl);
@@ -221,7 +259,7 @@ static void log_sample(void)
     v[0] = s16(memmap.values.BODY_ANGLE * 1e4);                    /* 本体角 [0.1 mrad] */
     v[1] = s16(th_ref * 1e4);                                       /* 目標角 [0.1 mrad] */
     v[2] = s16(memmap.values.BODY_ANGULAR_SPD * 1e3);              /* 本体角速度 [mrad/s] */
-    v[3] = s16((memmap.values.WHEEL_ANGULAR_SPD_L + memmap.values.WHEEL_ANGULAR_SPD_R) * 50.0);  /* 車輪角速度 平均 [0.01 rad/s] */
+    v[3] = s16((spd_l + spd_r) * 50.0);                            /* 制御に使った車輪角速度 平均 [0.01 rad/s] */
     v[4] = s16((memmap.values.T_SPD_L + memmap.values.T_SPD_R) * 50.0);                        /* 目標車輪角速度 [0.01 rad/s] */
     v[5] = s16((memmap.values.T_CURRENT_L + memmap.values.T_CURRENT_R) * 0.5);                  /* 電流指令 平均 */
     v[6] = s16((last_el + last_er) * 500.0);                        /* 車輪角のずれ 平均 [mrad] */
@@ -244,6 +282,7 @@ static void reset_state(void)
     v_cmd = w_cmd = 0.0;
     a_cmd = th_ref = dth_ref = 0.0;
     boost_left = 0;
+    ob_init = 0;
     btn_idle = btn_prev = memmap.values.PAD_BTN;
     memmap.values.T_SPD_L = memmap.values.T_SPD_R = 0.0;
 }
@@ -281,6 +320,7 @@ int main(void)
         while (1) {
             uint8_t slow = CycleProc();
             pad_to_speed();
+            wheel_observer();
             control_v3();
             log_sample();
             if (slow == 1) {
