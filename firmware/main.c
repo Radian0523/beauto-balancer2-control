@@ -363,6 +363,36 @@ static void reset_state(void)
     memmap.values.T_SPD_L = memmap.values.T_SPD_R = 0.0;
 }
 
+/* ジャイロ校正 (純正 calibrarion) を、途中で機体が動かされていないか確かめながら行う。
+ * 校正は 5 秒間のジャイロ平均を 0 点にするので、その間に機体を起こしたりすると回した分が
+ * 0 点に混ざる (実測で -22 LSB = -6.5 deg/s ずれた回があった)。
+ * 静止中のジャイロの揺れは数 LSB、機体を起こすと数十〜数百 LSB になるので、
+ * 最大と最小の差が CAL_RANGE を超えたら両方の LED を 1 秒速く点滅させてやり直す。 */
+#ifndef CAL_RANGE
+#define CAL_RANGE (30)
+#endif
+static void calibrate_checked(void)
+{
+    while (1) {
+        short gmin = 32767, gmax = -32768;
+        int k;
+        memmap.values.CALIBRATISON_CNT = 0;
+        while (calibrarion() == 0) {
+            short g;
+            CycleProc();
+            g = memmap.values.GYRO_DATA;
+            if (g < gmin) gmin = g;
+            if (g > gmax) gmax = g;
+            LedBlink(0, 2, 150, MAIN_CYCLE);
+        }
+        if (gmax - gmin <= CAL_RANGE) return;
+        for (k = 0; k < MAIN_CYCLE; k++) {        /* 失敗の合図: 両方の LED を 1 秒速く点滅 */
+            CycleProc();
+            LedBlink(0, 3, 100, MAIN_CYCLE);
+        }
+    }
+}
+
 int main(void)
 {
     Balancer2Init();
@@ -375,10 +405,7 @@ int main(void)
     setLED(2);
     Wait(1000);
 
-    while (calibrarion() == 0) {
-        CycleProc();
-        LedBlink(0, 2, 150, MAIN_CYCLE);
-    }
+    calibrate_checked();
     reset_state();
 
     while (1) {
