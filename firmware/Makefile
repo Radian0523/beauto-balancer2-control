@@ -80,7 +80,9 @@ VMAX ?= 0.2
 BOOST ?= 0.25
 BACC ?= 0.6
 V3_FIX ?= 1
-V3_DEFS = -DFIX_SPD_REF=$(V3_FIX) -DTI_S='($(TI))' -DE_MAX='($(EMAX))' -DACC_MAX='($(ACC))' -DV_MAX='($(VMAX))' -DV_BOOST='($(BOOST))' -DACC_BOOST='($(BACC))'
+FFK ?= 0
+FF_DIR ?= 1
+V3_DEFS = -DFF='($(FFK))' -DFF_DIR='($(FF_DIR).0)' -DFIX_SPD_REF=$(V3_FIX) -DTI_S='($(TI))' -DE_MAX='($(EMAX))' -DACC_MAX='($(ACC))' -DV_MAX='($(VMAX))' -DV_BOOST='($(BOOST))' -DACC_BOOST='($(BACC))'
 build/main_v3.o: main_v3.c Makefile FORCE | build
 	$(CC) $(CFLAGS) $(V3_DEFS) -c $< -o $@
 V3_OBJS = build/main_v3.o build/control.o build/cr_startup_lpc13.o
@@ -92,3 +94,9 @@ build/v3.bin: build/v3.axf
 	python3 lpc_checksum.py $@
 v3: build/v3.bin
 .PHONY: v3
+
+# v4 = v3 + 目標軌道フィードフォワード (前傾 a/g)。 make v4 FF_DIR=-1 で向き反転
+v4:
+	$(MAKE) v3 FFK=1 FF_DIR=$(FF_DIR)
+	cp build/v3.bin build/v4.bin
+.PHONY: v4

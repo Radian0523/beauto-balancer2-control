@@ -16,6 +16,11 @@
  *          段差はゆっくり当たるとモータの反動で本体が後ろへ倒れるので、勢いで乗り越える。
  *   BACC=0.6 ダッシュ時の加速度上限 [m/s^2]。
  *
+ *   FF=1   (v4) 目標軌道のフィードフォワード (2自由度制御)。加速度 a を指令するときは
+ *          本体の目標傾きも a/g だけ前に倒し、加速度の変化 (ジャーク) も JERK で制限する。
+ *          フィードバックゲインは純正のまま、ずれを直す役だけになる。
+ *          FF_DIR=-1 で傾きの向きを反転 (加速で余計に倒れるならこれ)。
+ *
  *  操作: 純正と同じ。ボタン → 校正 → 立ててボタン → 左スティック上下で前後、右スティック左右で旋回。
  */
 #include "Balancer2.h"
@@ -45,6 +50,18 @@
 #endif
 #define BOOST_T    (0.5)                   /* ダッシュの長さ [s] */
 
+#ifndef FF
+#define FF      (0)                        /* 前傾フィードフォワードの係数 (物理的には 1) */
+#endif
+#ifndef FF_DIR
+#define FF_DIR  (1.0)                      /* 前傾が BODY_ANGLE 負。純正ゲインの符号から推定 */
+#endif
+#ifndef JERK
+#define JERK    (3.0)                      /* 加速度の変化率の上限 [m/s^3] */
+#endif
+#define K_V        (4.0)                   /* 速度誤差 → 加速度 [1/s] */
+#define GRAV       (9.81)
+
 #define WHEEL_R    (0.021)                 /* タイヤ半径 [m] */
 #define TURN_MAX   (9.42477796)            /* 旋回時の左右差 [rad/s] (純正と同じ) */
 #define DEADZONE   (10)                    /* スティックの中立の遊び */
@@ -55,6 +72,8 @@ void LedBlink(unsigned char light, unsigned char blink, int msec, int callcycle)
 static double ref_l, ref_r;       /* 目標車輪角 [rad] */
 static double int_l, int_r;       /* 車輪角ずれの積分 [rad*s] */
 static double v_cmd, w_cmd;       /* 加速度制限後の前進速度 [m/s]、旋回 [rad/s] */
+static double a_cmd;              /* 指令加速度 [m/s^2] (FF 時) */
+static double th_ref, dth_ref;     /* 本体の目標傾き [rad]・目標角速度 [rad/s] */
 static int ramping;               /* 加速/減速中なら 1 (積分を止める) */
 static int boost_left;            /* ダッシュの残り [周期] */
 static unsigned short btn_prev, btn_idle;   /* ボタン無しのときの値を基準にする */
@@ -88,8 +107,23 @@ static void pad_to_speed(void)
         dv = ACC_BOOST / MAIN_CYCLE;
     }
 
+#if FF
+    {
+        /* 速度 → 加速度 → ジャークの順に制限した滑らかな軌道を作り、
+         * その加速度に見合った前傾 a/g を本体の目標にする */
+        double amax = dv * MAIN_CYCLE;
+        double a_des = clamp(K_V * (v_tgt - v_cmd), -amax, amax);
+        double a_new = a_cmd + clamp(a_des - a_cmd, -JERK / MAIN_CYCLE, JERK / MAIN_CYCLE);
+        dth_ref = -FF_DIR * FF * (a_new - a_cmd) * MAIN_CYCLE / GRAV;
+        a_cmd = a_new;
+        v_cmd += a_cmd / MAIN_CYCLE;
+        th_ref = -FF_DIR * FF * a_cmd / GRAV;
+        ramping = (a_cmd > 0.01 || a_cmd < -0.01);
+    }
+#else
     ramping = (v_tgt - v_cmd > 1e-4 || v_tgt - v_cmd < -1e-4);
     v_cmd += clamp(v_tgt - v_cmd, -dv, dv);
+#endif
     w_cmd += clamp(w_tgt - w_cmd, -dw, dw);
     memmap.values.T_SPD_L = v_cmd / WHEEL_R + w_cmd;
     memmap.values.T_SPD_R = v_cmd / WHEEL_R - w_cmd;
@@ -99,8 +133,8 @@ static void control_v3(void)
 {
     double el, er, sl, sr, corr;
     double outL, outR;
-    double body = memmap.values.GAIN_BODY * (memmap.values.GAIN_BODY_ANGLE * memmap.values.BODY_ANGLE
-                + memmap.values.GAIN_BODY_ANGULAR_SPD * memmap.values.BODY_ANGULAR_SPD);
+    double body = memmap.values.GAIN_BODY * (memmap.values.GAIN_BODY_ANGLE * (memmap.values.BODY_ANGLE - th_ref)
+                + memmap.values.GAIN_BODY_ANGULAR_SPD * (memmap.values.BODY_ANGULAR_SPD - dth_ref));
     double kw  = memmap.values.GAIN_WHEEL;
     double kwa = memmap.values.GAIN_WHEEL_ANGLE;
 
@@ -151,6 +185,7 @@ static void reset_state(void)
     ClearVariables();
     ref_l = ref_r = int_l = int_r = 0.0;
     v_cmd = w_cmd = 0.0;
+    a_cmd = th_ref = dth_ref = 0.0;
     boost_left = 0;
     btn_idle = btn_prev = memmap.values.PAD_BTN;
     memmap.values.T_SPD_L = memmap.values.T_SPD_R = 0.0;
