@@ -85,7 +85,7 @@ FF_DIR ?= 1
 VOBS ?= 0
 VBW ?= 20
 LOGDIV ?= 20
-V3_DEFS = -DLOG_DIV=$(LOGDIV) -DVOBS=$(VOBS) -DVBW='($(VBW))' -DFF='($(FFK))' -DFF_DIR='($(FF_DIR).0)' -DFIX_SPD_REF=$(V3_FIX) -DTI_S='($(TI))' -DE_MAX='($(EMAX))' -DACC_MAX='($(ACC))' -DV_MAX='($(VMAX))' -DV_BOOST='($(BOOST))' -DACC_BOOST='($(BACC))'
+V3_DEFS = -DREC_DIV=$(LOGDIV) -DVOBS=$(VOBS) -DVBW='($(VBW))' -DFF='($(FFK))' -DFF_DIR='($(FF_DIR).0)' -DFIX_SPD_REF=$(V3_FIX) -DTI_S='($(TI))' -DE_MAX='($(EMAX))' -DACC_MAX='($(ACC))' -DV_MAX='($(VMAX))' -DV_BOOST='($(BOOST))' -DACC_BOOST='($(BACC))'
 build/main_v3.o: main_v3.c Makefile FORCE | build
 	$(CC) $(CFLAGS) $(V3_DEFS) -c $< -o $@
 V3_OBJS = build/main_v3.o build/control.o build/cr_startup_lpc13.o
