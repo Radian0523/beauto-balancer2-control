@@ -44,8 +44,8 @@ stock: build/stock.bin
 TI ?= 2
 EMAX ?= 4
 ACC ?= 0.5
-VMAX ?= 0.2
-BOOST ?= 0.25
+VMAX ?= 0.5
+BOOST ?= 0
 BACC ?= 0.6
 V3_FIX ?= 1
 FFK ?= 0
