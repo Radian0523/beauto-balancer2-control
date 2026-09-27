@@ -112,7 +112,7 @@ def main():
     for a in ax:
         a.grid(alpha=0.3)
         a.legend(loc="upper left", fontsize=9)
-    fig.suptitle(f"v4 走行ログ {stamp}")
+    fig.suptitle(f"走行ログ {stamp} ({rate:.0f} Hz)")
     fig.tight_layout()
     path_png = f"logs/run_{stamp}.png"
     fig.savefig(path_png, dpi=110)
