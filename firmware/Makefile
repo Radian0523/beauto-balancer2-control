@@ -71,3 +71,22 @@ build/v2.bin: build/v2.axf
 v2: build/v2.bin
 FORCE:
 .PHONY: v2 FORCE
+
+# v3: コントローラ操縦 + 段差・坂対策。 make v3 FIX=1 TI=2 EMAX=4 ACC=0.5 VMAX=0.2
+TI ?= 2
+EMAX ?= 4
+ACC ?= 0.5
+VMAX ?= 0.2
+V3_FIX ?= 1
+V3_DEFS = -DFIX_SPD_REF=$(V3_FIX) -DTI_S='($(TI))' -DE_MAX='($(EMAX))' -DACC_MAX='($(ACC))' -DV_MAX='($(VMAX))'
+build/main_v3.o: main_v3.c Makefile FORCE | build
+	$(CC) $(CFLAGS) $(V3_DEFS) -c $< -o $@
+V3_OBJS = build/main_v3.o build/control.o build/cr_startup_lpc13.o
+build/v3.axf: $(V3_OBJS) bb2.ld
+	$(CC) $(LDFLAGS) -o $@ $(V3_OBJS) -L$(V)/lib -lBalancer2_lib -lm
+	$(SIZE) $@
+build/v3.bin: build/v3.axf
+	$(OBJCOPY) -O binary $< $@
+	python3 lpc_checksum.py $@
+v3: build/v3.bin
+.PHONY: v3

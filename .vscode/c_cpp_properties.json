@@ -1,0 +1,14 @@
+{
+  "configurations": [
+    {
+      "name": "BB2 (LPC1343)",
+      "includePath": ["${workspaceFolder}/firmware", "${workspaceFolder}/firmware/vendor", "${workspaceFolder}/firmware/vendor/lib"],
+      "defines": ["__USE_CMSIS=Balancer2_lib"],
+      "compilerPath": "/Applications/ArmGNUToolchain/15.3.rel1/arm-none-eabi/bin/arm-none-eabi-gcc",
+      "compilerArgs": ["-mcpu=cortex-m3", "-mthumb"],
+      "cStandard": "gnu99",
+      "intelliSenseMode": "gcc-arm"
+    }
+  ],
+  "version": 4
+}
