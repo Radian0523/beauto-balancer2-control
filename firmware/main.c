@@ -83,7 +83,9 @@
 #define WHEEL_R    (0.021)                 /* タイヤ半径 [m] */
 #define TURN_MAX   (9.42477796)            /* 旋回時の左右差 [rad/s] (純正と同じ) */
 #define DEADZONE   (10)                    /* スティックの中立の遊び */
-#define I_CLIP     (3.0)                   /* 積分の寄与を車輪角 3 rad ぶんまでに制限 */
+#ifndef I_CLIP
+#define I_CLIP     (8.0)                   /* 積分の寄与を車輪角 8 rad ぶんまでに制限 (傾き推定のずれ約 15° まで打ち消せる) */
+#endif
 
 void LedBlink(unsigned char light, unsigned char blink, int msec, int callcycle);
 
