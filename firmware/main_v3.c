@@ -228,8 +228,8 @@ static void control_v3(void)
  * 電源を切ると消えるので、止めたら電源はそのままで USB を挿す。
  * srcbuf は USB の 'R' コマンドで 0x1000 番地から読める (純正のログ機能は使っていないので衝突しない)。
  */
-#ifndef LOG_DIV
-#define LOG_DIV   (20)                       /* 500Hz / 20 = 25Hz で記録 */
+#ifndef REC_DIV
+#define REC_DIV   (20)                       /* 500Hz / 20 = 25Hz で記録 */
 #endif
 #define LOG_NVAR  (8)
 #define LOG_HDR   (8)
@@ -245,7 +245,7 @@ static short s16(double x)
 static void log_reset(void)
 {
     log_idx = log_cnt = log_div = 0;
-    srcbuf[0] = 'L'; srcbuf[1] = 'G'; srcbuf[2] = LOG_NVAR; srcbuf[3] = LOG_DIV;
+    srcbuf[0] = 'L'; srcbuf[1] = 'G'; srcbuf[2] = LOG_NVAR; srcbuf[3] = REC_DIV;
     srcbuf[4] = srcbuf[5] = srcbuf[6] = srcbuf[7] = 0;
 }
 
@@ -254,7 +254,7 @@ static void log_sample(void)
     short v[LOG_NVAR];
     unsigned int i;
     uint8_t *p;
-    if (++log_div < LOG_DIV) return;
+    if (++log_div < REC_DIV) return;
     log_div = 0;
     v[0] = s16(memmap.values.BODY_ANGLE * 1e4);                    /* 本体角 [0.1 mrad] */
     v[1] = s16(th_ref * 1e4);                                       /* 目標角 [0.1 mrad] */
