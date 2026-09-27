@@ -56,7 +56,7 @@ static double ref_l, ref_r;       /* 目標車輪角 [rad] */
 static double int_l, int_r;       /* 車輪角ずれの積分 [rad*s] */
 static double v_cmd, w_cmd;       /* 加速度制限後の前進速度 [m/s]、旋回 [rad/s] */
 static int boost_left;            /* ダッシュの残り [周期] */
-static unsigned short btn_prev;
+static unsigned short btn_prev, btn_idle;   /* ボタン無しのときの値を基準にする */
 
 static double stick(char raw)
 {
@@ -79,7 +79,7 @@ static void pad_to_speed(void)
     double dw = 4.0 * TURN_MAX / MAIN_CYCLE;                   /* 旋回は 0.25 秒で最大まで */
     unsigned short btn = memmap.values.PAD_BTN;
 
-    if (btn != 0 && btn_prev == 0) boost_left = (int)(BOOST_T * MAIN_CYCLE);  /* 押した瞬間 */
+    if (btn != btn_idle && btn_prev == btn_idle) boost_left = (int)(BOOST_T * MAIN_CYCLE);  /* 押した瞬間 */
     btn_prev = btn;
     if (boost_left > 0) {
         boost_left--;
@@ -147,7 +147,7 @@ static void reset_state(void)
     ref_l = ref_r = int_l = int_r = 0.0;
     v_cmd = w_cmd = 0.0;
     boost_left = 0;
-    btn_prev = memmap.values.PAD_BTN;
+    btn_idle = btn_prev = memmap.values.PAD_BTN;
     memmap.values.T_SPD_L = memmap.values.T_SPD_R = 0.0;
 }
 
