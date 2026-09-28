@@ -262,11 +262,11 @@ static double backlash(double u)
  *   - 本体の傾きは直立ではなく、釣り合う角度 th0 + ① の目標前傾 th_ref からのずれにする
  *   - 走行中だけ車輪角のずれ (左右の平均) に上限 E_MAX をかける (段差対策)
  *   - 車輪角速度は ② のオブザーバの値を使い、純正の単位の間違い (T_SPD / MAIN_CYCLE) を直す
- *   - 車輪角のずれの積分を足す (坂対策)
+ *   - 車輪角のずれ (左右の平均) の積分を左右に同じだけ足す (坂対策)
  *   - 最後にギアのガタの補償をかける (BL_I > 0 のとき)
  */
 static double ref_l, ref_r;         /* 目標車輪角 [rad] */
-static double int_l, int_r;         /* 車輪角のずれの積分 [rad*s] */
+static double int_m;                /* 車輪角のずれ (左右の平均) の積分 [rad*s] */
 static double last_el, last_er;     /* 直近の車輪角のずれ (ログ用) */
 
 static void control(void)
@@ -309,13 +309,14 @@ static void control(void)
 #if TI_S > 0
     /* [v5] 坂対策: 坂では重力で押し戻され続け、純正は「ずれた分だけ押し返す」だけなので下がりっぱなしになる。
      * ずれを積分して足すと、坂の力を覚えて打ち消し、元の位置に戻る。
-     * 加速中の遅れは溜めない (溜めると加速後に余計な力として一気に出る)。 */
-    if (!ramping) {
-        int_l = clamp(int_l + el / MAIN_CYCLE, -I_CLIP * TI_S, I_CLIP * TI_S);
-        int_r = clamp(int_r + er / MAIN_CYCLE, -I_CLIP * TI_S, I_CLIP * TI_S);
-    }
-    outL += kw * kwa * int_l / TI_S;
-    outR += kw * kwa * int_r / TI_S;
+     * 加速中の遅れは溜めない (溜めると加速後に余計な力として一気に出る)。
+     * 積分は左右の平均 (前後の位置のずれ) だけにかけ、左右に同じだけ足す。左右別々に積分すると、
+     * 向きのずれが左右逆向きに溜まって向きのずれを広げる向きに働き、左右が上限 (±I_CLIP) に逆向きに張り付いて
+     * 左右のモータが ±1 万の力で押し合ったまま固まっていた (向きのずれ 約 13cm、前後に使える力が残らない)。 */
+    if (!ramping)
+        int_m = clamp(int_m + (el + er) * 0.5 / MAIN_CYCLE, -I_CLIP * TI_S, I_CLIP * TI_S);
+    outL += kw * kwa * int_m / TI_S;
+    outR += kw * kwa * int_m / TI_S;
 #endif
 
     /* 左右差の項 (純正と同じ): 左右の車輪をそろえてまっすぐ走る */
@@ -427,7 +428,7 @@ static void log_sample(void)
     v[4] = s16((memmap.values.T_SPD_L + memmap.values.T_SPD_R) * 50.0);         /* 目標車輪角速度 平均 [0.01 rad/s] */
     v[5] = s16((memmap.values.T_CURRENT_L + memmap.values.T_CURRENT_R) * 0.5);  /* 電流指令 平均 */
     v[6] = s16((last_el + last_er) * 500.0);                                    /* 車輪角のずれ 平均 [mrad] */
-    v[7] = s16((int_l + int_r) * 500.0);                                        /* ずれの積分 平均 [mrad*s] */
+    v[7] = s16(int_m * 1000.0);                                                 /* ずれの積分 (左右の平均) [mrad*s] */
     v[8] = s16(((memmap.values.M_CURRENT_L - memmap.values.CURRENT_OFFSET_L)
               + (memmap.values.M_CURRENT_R - memmap.values.CURRENT_OFFSET_R)) * 0.5);  /* 実際の電流 平均 (生値) */
     v[9] = s16((last_el - last_er) * 1e3);                                      /* 向きのずれ = 左右の車輪角のずれの差 [mrad] */
@@ -484,7 +485,7 @@ static void calibrate_checked(void)
 static void reset_state(void)
 {
     ClearVariables();
-    ref_l = ref_r = int_l = int_r = 0.0;
+    ref_l = ref_r = int_m = 0.0;
     v_cmd = w_cmd = 0.0;
     a_cmd = th_ref = dth_ref = 0.0;
     th0 = 0.0;
