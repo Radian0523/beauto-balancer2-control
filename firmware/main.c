@@ -70,6 +70,10 @@
 #ifndef K_WR
 #define K_WR      (1.0)     /* KWR: 車輪角速度のゲインに掛ける倍率 (純正 = 1)。同上 */
 #endif
+#ifndef S_MAX
+#define S_MAX     (0)       /* SMAX: 車輪の速さのずれ (前後の平均) の上限 [m/s]。0 で無効。
+                             * シーソーが傾いた瞬間などに車輪が走り出したとき、速さの項が上限を超える力を要求しないように */
+#endif
 #ifndef VBW
 #define VBW       (20.0)    /* VBW: 車輪速度オブザーバの帯域 [Hz] */
 #endif
@@ -323,6 +327,13 @@ static void control(void)
     /* [v5] 車輪角速度のずれ。純正は T_SPD / MAIN_CYCLE を引いていて、走行中は速度の項がブレーキになっていた */
     sl = spd_l - memmap.values.T_SPD_L;
     sr = spd_r - memmap.values.T_SPD_R;
+    /* 速さのずれの上限は前後の平均だけにかけ、左右の差 (向き) はそのまま */
+    if (S_MAX > 0) {
+        double sm = (sl + sr) * 0.5, sd = (sl - sr) * 0.5;
+        sm = clamp(sm, -S_MAX / WHEEL_R, S_MAX / WHEEL_R);
+        sl = sm + sd;
+        sr = sm - sd;
+    }
 
     outL = body + kw * (kwa * el + memmap.values.GAIN_WHEEL_ANGULAR_SPD * K_WR * sl);
     outR = body + kw * (kwa * er + memmap.values.GAIN_WHEEL_ANGULAR_SPD * K_WR * sr);
