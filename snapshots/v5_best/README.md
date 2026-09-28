@@ -14,3 +14,6 @@
 
 ソースから作り直すとき: `git checkout v5-best -- firmware/` (作業中の変更に注意) か、
 このフォルダの main.c と Makefile を firmware/ に置いて `./bb2 build v5`。
+
+`v5_best_cal80.bin` は同じ版で、校正チェックの基準 (ジャイロの最大 - 最小) だけ 30 → 80 LSB に緩めたもの。
+置いたままでも校正が終わらない (両方の LED が速く点滅してやり直しを繰り返す) ときに使う。
