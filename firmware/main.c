@@ -41,10 +41,10 @@
 #define V_FAST    (0.5)     /* VFAST: R2 を押している間に自動で進む速さ [m/s] (いそいそモード。段差を勢いで越えるとき)。0 で無効 */
 #endif
 #ifndef BTN_SLOW
-#define BTN_SLOW  (0x0800)  /* BTNSLOW: ゆっくりモードのボタン (R1) の PAD_BTN のビット。./bb2 pad で確かめる */
+#define BTN_SLOW  (0x0808)  /* BTNSLOW: ゆっくりモードのボタン (R1) の PAD_BTN のビット。待機中は 0x0800、走行中は 0x0008 で届く (上下のバイトが入れ替わる) ので両方 */
 #endif
 #ifndef BTN_FAST
-#define BTN_FAST  (0x0200)  /* BTNFAST: いそいそモードのボタン (R2) の PAD_BTN のビット */
+#define BTN_FAST  (0x0202)  /* BTNFAST: いそいそモードのボタン (R2) の PAD_BTN のビット (待機中 0x0200、走行中 0x0002) */
 #endif
 #ifndef ACC_MAX
 #define ACC_MAX   (0.5)     /* ACC: 加速度の上限 [m/s^2] */
