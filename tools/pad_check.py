@@ -27,7 +27,9 @@ def main():
             if idle is None:
                 idle = btn
             pressed = btn ^ idle
-            print(f"\r{btn:#06x}  {pressed:#06x}        {rx:4d} {ry:4d} {lx:4d} {ly:4d}   ", end="", flush=True)
+            ua = struct.unpack("<3d", read(dev, 120, 24))    # 機体が書き出した値 (走行中だけ更新される)
+            print(f"\r{btn:#06x}  {pressed:#06x}        {rx:4d} {ry:4d} {lx:4d} {ly:4d}   "
+                  f"| 機体: 基準 {int(ua[0]):#06x} 押された {int(ua[1]):#06x} 目標速度 {ua[2]:+.2f} m/s   ", end="", flush=True)
             time.sleep(0.1)
     except KeyboardInterrupt:
         print()

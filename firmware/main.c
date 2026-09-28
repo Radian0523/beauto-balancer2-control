@@ -200,6 +200,9 @@ static void pad_to_speed(void)
     {
         unsigned short pressed = (unsigned short)(btn ^ btn_idle);
         double s = -stick(memmap.values.PAD_AN_LY, ly0);        /* 前 +1 〜 後ろ -1 */
+        /* 確認用: USB で ./bb2 pad から見えるように memmap の空き欄に書き出す */
+        memmap.values.USER_ARIA1 = btn_idle;
+        memmap.values.USER_ARIA2 = pressed;
         if (V_SLOW > 0 && V_BOOST <= 0 && (pressed & BTN_SLOW)) {
             v_tgt = (s < 0) ? V_SLOW * (1.0 + 2.0 * s) : V_SLOW;    /* 引かなければ +V_SLOW、引ききると -V_SLOW */
             w_tgt *= 0.5;
@@ -216,6 +219,7 @@ static void pad_to_speed(void)
     v_cmd += a_cmd / MAIN_CYCLE;
     th_ref = -FF_K * a_cmd / GRAV;                                              /* 目標前傾 = -a/g */
     ramping = (a_cmd > 0.01 || a_cmd < -0.01);
+    memmap.values.USER_ARIA3 = v_tgt;                            /* 確認用: 目標速度 (ボタンのモードを反映したあと) */
 
     w_cmd += clamp(w_tgt - w_cmd, -dw, dw);
     memmap.values.T_SPD_L = v_cmd / WHEEL_R + w_cmd;           /* 車輪の目標角速度 [rad/s] */
