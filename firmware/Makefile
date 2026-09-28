@@ -44,6 +44,9 @@ stock: build/stock.bin
 VMAX ?= 0.3
 VBACK ?= 0.3
 VSLOW ?= 0.08
+VFAST ?= 0.5
+BTNSLOW ?= 0x0800
+BTNFAST ?= 0x0200
 ACC ?= 0.5
 FFK ?= 1
 TI ?= 2
@@ -71,7 +74,7 @@ DIAG_DELAY ?= 0
 TEST ?= 0
 TAMP ?= 3000
 THZ ?= 2
-DEFS = -DV_MAX='($(VMAX))' -DV_BACK='($(VBACK))' -DV_SLOW='($(VSLOW))' -DACC_MAX='($(ACC))' -DFF_K='($(FFK))' -DTI_S='($(TI))' -DI_CLIP='($(ICLIP))' \
+DEFS = -DV_MAX='($(VMAX))' -DV_BACK='($(VBACK))' -DV_SLOW='($(VSLOW))' -DV_FAST='($(VFAST))' -DBTN_SLOW='($(BTNSLOW))' -DBTN_FAST='($(BTNFAST))' -DACC_MAX='($(ACC))' -DFF_K='($(FFK))' -DTI_S='($(TI))' -DI_CLIP='($(ICLIP))' \
        -DE_MAX='($(EMAX))' -DVBW='($(VBW))' -DS_MAX='($(SMAX))' -DK_CP='($(KCP))' -DK_CI='($(KCI))' -DK_BA='($(KBA))' -DK_WA='($(KWA))' -DK_BR='($(KBR))' -DK_WR='($(KWR))' -DV_BOOST='($(BOOST))' -DACC_BOOST='($(BACC))' \
        -DCAL_RANGE=$(CAL_RANGE) -DGYRO_TRIM_T='($(GTRIM))' -DBZ_T='($(BZT))' -DBL_I='($(BL))' -DBL_W='($(BLW))' -DREC_DIV=$(LOGDIV) -DLOG_SET=$(LOGSET) -DDIAG=$(DIAG) -DDIAG_DELAY=$(DIAG_DELAY) -DTEST=$(TEST) -DTEST_AMP=$(TAMP) -DTEST_HZ=$(THZ)
 
