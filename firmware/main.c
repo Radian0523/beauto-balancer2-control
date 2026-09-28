@@ -541,6 +541,10 @@ static void reset_state(void)
 
 /* ============================================================ main */
 
+#define FALL_ANGLE (0.785)          /* 転倒とみなす傾き [rad] (45°) */
+#define FALL_T     (0.1)            /* その傾きが続いたら止める時間 [s] */
+static int fall_cnt;
+
 int main(void)
 {
     Balancer2Init();
@@ -621,6 +625,7 @@ int main(void)
         gyro_trim_reset();
 
         /* 走行 (500Hz) */
+        fall_cnt = 0;
         while (1) {
             uint8_t slow = CycleProc();
             gyro_trim();
@@ -629,6 +634,17 @@ int main(void)
             balance_zero();
             control();
             log_sample();
+            /* 転倒の検出: 釣り合う角度から FALL_ANGLE 以上傾いた状態が FALL_T 秒続いたら止める。
+             * 純正の isWhleeOverSpeed() は車輪 62.8 rad/s 超えで止めるが、この機体は全力でも 44〜50 rad/s しか
+             * 回らない (電圧の限界) ので一度も働かず、倒れたあとも全力で空回りし続けていた。 */
+            {
+                double tilt = memmap.values.BODY_ANGLE - th0;
+                fall_cnt = (tilt > FALL_ANGLE || tilt < -FALL_ANGLE) ? fall_cnt + 1 : 0;
+            }
+            if (fall_cnt > (int)(FALL_T * MAIN_CYCLE)) {
+                memmap.values.BODY_ANGULAR_SPD_OFFSET = trim_hist[1];   /* 倒れる前の 0 点に戻す */
+                break;
+            }
             if (slow == 1) {
                 if (isWhleeOverSpeed() != 0) {          /* 転倒 (車輪の回りすぎ) で停止 */
                     memmap.values.BODY_ANGULAR_SPD_OFFSET = trim_hist[1];   /* 倒れる前の 0 点に戻す */
