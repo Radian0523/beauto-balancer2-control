@@ -96,7 +96,7 @@
 #define BZ_T      (2.0)     /* BZT: 釣り合う角度を覚え直す時定数 [s] (スタート直後 BZ_T0 秒は BZ_T_FAST)。0 で無効 */
 #endif
 #ifndef CAL_RANGE
-#define CAL_RANGE (30)      /* CAL_RANGE: 校正中のジャイロの揺れ (最大 - 最小) がこれを超えたらやり直す [LSB] */
+#define CAL_RANGE (80)      /* CAL_RANGE: 校正中のジャイロの揺れ (最大 - 最小) がこれを超えたらやり直す [LSB]。走行中の 0 点補正があるので緩め (30 だと温まる途中で終わらない) */
 #endif
 #ifndef REC_DIV
 #define REC_DIV   (20)      /* LOGDIV: ログの間引き。500Hz / 20 = 25Hz で約 10 秒ぶん */
