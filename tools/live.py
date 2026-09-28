@@ -124,6 +124,8 @@ def main():
             now = time.time()
             if sess and sess.rows and now - last_draw > DRAW_EVERY:
                 draw(ax, sess)
+                if sess.f:
+                    sess.f.flush()      # 止める前でもファイルに出しておく
                 fig.canvas.draw_idle()
                 fig.canvas.flush_events()
                 last_draw = now

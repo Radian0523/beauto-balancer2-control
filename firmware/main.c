@@ -336,7 +336,7 @@ static void control(void)
  *   - 倒れて止まったときは、0.5〜1 秒前の値に戻す (倒れる途中の値を次の走行に持ち越さない)
  */
 #define TRIM_CLIP (1000.0)          /* [LSB] 約 300°/s。立っているときの振動 (±100°/s 程度) は切らない */
-#define TRIM_MAX  (60.0)            /* [LSB] */
+#define TRIM_MAX  (200.0)           /* [LSB] 走行中は校正時より 60 LSB 以上ずれることがあった */
 static double cal_offset;           /* 校正で決まった 0 点 [LSB] */
 static double trim_hist[2];         /* 0.5 秒ごとの 0 点の履歴 ([0] が新しい) */
 static int trim_tick;
