@@ -46,6 +46,15 @@
 #ifndef BTN_FAST
 #define BTN_FAST  (0x0002)  /* BTNFAST: いそいそモードのボタン (R2) の PAD_BTN のビット */
 #endif
+#ifndef BTN_UP
+#define BTN_UP    (0x0020)  /* BTNUP: いそいそモードの速さを上げるボタン (◯) のビット */
+#endif
+#ifndef BTN_DOWN
+#define BTN_DOWN  (0x0040)  /* BTNDOWN: 下げるボタン (✖︎) のビット */
+#endif
+#define V_FAST_STEP (0.05)          /* ◯/✖︎ 1 回で変える速さ [m/s] */
+#define V_FAST_MIN  (0.1)
+#define V_FAST_MAX  (0.7)           /* 0.9 m/s あたりが電圧の限界 (実験 B) なので余裕を残す */
 #ifndef ACC_MAX
 #define ACC_MAX   (0.5)     /* ACC: 加速度の上限 [m/s^2] */
 #endif
@@ -157,6 +166,8 @@ static double th_ref, dth_ref;      /* 本体の目標傾き [rad]・その変�
 static int ramping;                 /* 加速/減速中なら 1 (③ の積分を止める) */
 static int boost_left;              /* ダッシュの残り [周期] */
 static unsigned short btn_prev, btn_idle;   /* ボタンを押していないときの値を基準にする */
+static double v_fast = V_FAST;      /* いそいそモードの速さ。◯/✖︎ で変える (電源を切るまで覚えている) */
+static unsigned short btn_last;     /* ◯/✖︎ の押した瞬間を見るための前回の値 */
 static int ly0, rx0;                /* スタート時のスティックの値 = 中立。スティックは手を離してもぴったり 0 に戻らない */
 
 static int neutral(char raw)
@@ -200,6 +211,12 @@ static void pad_to_speed(void)
     {
         unsigned short pressed = (unsigned short)(btn ^ btn_idle);
         double s = -stick(memmap.values.PAD_AN_LY, ly0);        /* 前 +1 〜 後ろ -1 */
+        /* ◯ を押した瞬間に速く、✖︎ を押した瞬間に遅く */
+        unsigned short down = (unsigned short)(pressed & ~(btn_last ^ btn_idle));   /* 今回新しく押されたビット */
+        if (down & BTN_UP)   v_fast = clamp(v_fast + V_FAST_STEP, V_FAST_MIN, V_FAST_MAX);
+        if (down & BTN_DOWN) v_fast = clamp(v_fast - V_FAST_STEP, V_FAST_MIN, V_FAST_MAX);
+        btn_last = btn;
+        memmap.values.USER_ARIA4 = v_fast;
         /* 確認用: USB で ./bb2 pad から見えるように memmap の空き欄に書き出す */
         memmap.values.USER_ARIA1 = btn_idle;
         memmap.values.USER_ARIA2 = pressed;
@@ -207,7 +224,7 @@ static void pad_to_speed(void)
             v_tgt = (s < 0) ? V_SLOW * (1.0 + 2.0 * s) : V_SLOW;    /* 引かなければ +V_SLOW、引ききると -V_SLOW */
             w_tgt *= 0.5;
         } else if (V_FAST > 0 && V_BOOST <= 0 && (pressed & BTN_FAST)) {
-            v_tgt = (s < 0) ? V_FAST * (1.0 + 2.0 * s) : V_FAST;
+            v_tgt = (s < 0) ? v_fast * (1.0 + 2.0 * s) : v_fast;
             if (v_tgt < -V_BACK) v_tgt = -V_BACK;
         }
     }
@@ -568,7 +585,7 @@ static void reset_state(void)
     bz_tick = 0;
     boost_left = 0;
     ob_init = 0;
-    btn_idle = btn_prev = memmap.values.PAD_BTN;
+    btn_idle = btn_prev = btn_last = memmap.values.PAD_BTN;
     ly0 = neutral(memmap.values.PAD_AN_LY);
     rx0 = neutral(memmap.values.PAD_AN_RX);
     memmap.values.T_SPD_L = memmap.values.T_SPD_R = 0.0;
