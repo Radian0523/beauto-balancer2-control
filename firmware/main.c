@@ -77,7 +77,7 @@
 #define K_CI      (1.0)     /* KCI: 同じく I ゲインの倍率 */
 #endif
 #ifndef K_BA
-#define K_BA      (1.3)     /* KBA: 本体の傾きのゲイン (K1) の倍率 (純正 = 1)。モデルで設計: 1Hz のゆっくりした揺れの減衰比 0.06 → 0.6 */
+#define K_BA      (1.0)     /* KBA: 本体の傾きのゲイン (K1) の倍率 (純正 = 1)。1.3 にすると坂を 0.3 m/s で登るとき行きすぎと戻りを繰り返して倒れた */
 #endif
 #ifndef K_WA
 #define K_WA      (1.0)     /* KWA: 車輪の位置のゲイン (K3、積分にも効く) の倍率 (純正 = 1) */
@@ -86,8 +86,15 @@
 #define K_BR      (1.0)     /* KBR: 本体角速度のゲインに掛ける倍率 (純正 = 1)。細かい振動を減らす試し用 */
 #endif
 #ifndef K_WR
-#define K_WR      (1.25)    /* KWR: 車輪角速度のゲイン (K4) の倍率 (純正 = 1)。KBA と組で設計 (シーソーで 3 回連続完走) */
+#define K_WR      (1.0)     /* KWR: 車輪角速度のゲイン (K4) の倍率 (純正 = 1) */
 #endif
+#ifndef K_BA_S
+#define K_BA_S    (1.3)     /* KBAS: ゆっくりモード (R1) の間だけ使う KBA。モデルで設計: 1Hz の揺れの減衰比 0.06 → 0.6 */
+#endif
+#ifndef K_WR_S
+#define K_WR_S    (1.25)    /* KWRS: ゆっくりモードの間だけ使う KWR。KBAS と組で、シーソーで 3 回連続完走 (純正のままだと傾いた瞬間に後ろに倒れた) */
+#endif
+#define SLOW_GAIN_T (0.3)   /* ゲインをゆっくりモード用に切り替えるのにかける時間 [s]。一度に変えると蹴られる */
 #ifndef S_MAX
 #define S_MAX     (0.4)     /* SMAX: 車輪の速さのずれ (前後の平均) の上限 [m/s]。0 で無効。
                              * シーソーが傾いた瞬間などに車輪が走り出したとき、速さの項が上限を超える力を要求しないように */
@@ -168,6 +175,8 @@ static int boost_left;              /* ダッシュの残り [周期] */
 static unsigned short btn_prev, btn_idle;   /* ボタンを押していないときの値を基準にする */
 static double v_fast = V_FAST;      /* いそいそモードの速さ。◯/✖︎ で変える (電源を切るまで覚えている) */
 static unsigned short btn_last;     /* ◯/✖︎ の押した瞬間を見るための前回の値 */
+static int slow_on;                 /* ゆっくりモード (R1) を押しているなら 1 */
+static double slow_g;               /* ゲインの切り替えの進み具合 0 (普段) 〜 1 (ゆっくりモード用) */
 static int ly0, rx0;                /* スタート時のスティックの値 = 中立。スティックは手を離してもぴったり 0 に戻らない */
 
 static int neutral(char raw)
@@ -220,7 +229,8 @@ static void pad_to_speed(void)
         /* 確認用: USB で ./bb2 pad から見えるように memmap の空き欄に書き出す */
         memmap.values.USER_ARIA1 = btn_idle;
         memmap.values.USER_ARIA2 = pressed;
-        if (V_SLOW > 0 && V_BOOST <= 0 && (pressed & BTN_SLOW)) {
+        slow_on = (V_SLOW > 0 && V_BOOST <= 0 && (pressed & BTN_SLOW));
+        if (slow_on) {
             v_tgt = (s < 0) ? V_SLOW * (1.0 + 2.0 * s) : V_SLOW;    /* 引かなければ +V_SLOW、引ききると -V_SLOW */
             w_tgt *= 0.5;
         } else if (V_FAST > 0 && V_BOOST <= 0 && (pressed & BTN_FAST)) {
@@ -341,8 +351,13 @@ static void control(void)
     double outL, outR;
     double kw  = memmap.values.GAIN_WHEEL;
     double kwa = memmap.values.GAIN_WHEEL_ANGLE * K_WA;
+    double kba, kwr, body;
+    /* ゆっくりモードの間だけ、傾きと車輪の速さのゲインを強くする (シーソー用)。SLOW_GAIN_T かけて切り替える */
+    slow_g = clamp(slow_g + (slow_on ? 1.0 : -1.0) / (SLOW_GAIN_T * MAIN_CYCLE), 0.0, 1.0);
+    kba = K_BA + (K_BA_S - K_BA) * slow_g;
+    kwr = K_WR + (K_WR_S - K_WR) * slow_g;
     /* 本体の項 [v5] 目標前傾からのずれ */
-    double body = memmap.values.GAIN_BODY * (memmap.values.GAIN_BODY_ANGLE * K_BA * (memmap.values.BODY_ANGLE - th0 - th_ref)
+    body = memmap.values.GAIN_BODY * (memmap.values.GAIN_BODY_ANGLE * kba * (memmap.values.BODY_ANGLE - th0 - th_ref)
                 + memmap.values.GAIN_BODY_ANGULAR_SPD * K_BR * (memmap.values.BODY_ANGULAR_SPD - dth_ref));
 
     /* 目標車輪角 = 目標角速度の積分 (純正と同じ) */
@@ -376,8 +391,8 @@ static void control(void)
         sr = sm - sd;
     }
 
-    outL = body + kw * (kwa * el + memmap.values.GAIN_WHEEL_ANGULAR_SPD * K_WR * sl);
-    outR = body + kw * (kwa * er + memmap.values.GAIN_WHEEL_ANGULAR_SPD * K_WR * sr);
+    outL = body + kw * (kwa * el + memmap.values.GAIN_WHEEL_ANGULAR_SPD * kwr * sl);
+    outR = body + kw * (kwa * er + memmap.values.GAIN_WHEEL_ANGULAR_SPD * kwr * sr);
 
 #if TI_S > 0
     /* [v5] 坂対策: 坂では重力で押し戻され続け、純正は「ずれた分だけ押し返す」だけなので下がりっぱなしになる。
@@ -584,6 +599,8 @@ static void reset_state(void)
     th0 = 0.0;
     bz_tick = 0;
     boost_left = 0;
+    slow_on = 0;
+    slow_g = 0.0;
     ob_init = 0;
     btn_idle = btn_prev = btn_last = memmap.values.PAD_BTN;
     ly0 = neutral(memmap.values.PAD_AN_LY);

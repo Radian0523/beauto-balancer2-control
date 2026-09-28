@@ -58,10 +58,12 @@ VBW ?= 20
 SMAX ?= 0.4
 KCP ?= 4
 KCI ?= 1
-KBA ?= 1.3
+KBA ?= 1
 KWA ?= 1
 KBR ?= 1
-KWR ?= 1.25
+KWR ?= 1
+KBAS ?= 1.3
+KWRS ?= 1.25
 BOOST ?= 0
 BACC ?= 0.6
 CAL_RANGE ?= 80
@@ -77,7 +79,7 @@ TEST ?= 0
 TAMP ?= 3000
 THZ ?= 2
 DEFS = -DV_MAX='($(VMAX))' -DV_BACK='($(VBACK))' -DV_SLOW='($(VSLOW))' -DV_FAST='($(VFAST))' -DBTN_SLOW='($(BTNSLOW))' -DBTN_FAST='($(BTNFAST))' -DBTN_UP='($(BTNUP))' -DBTN_DOWN='($(BTNDOWN))' -DACC_MAX='($(ACC))' -DFF_K='($(FFK))' -DTI_S='($(TI))' -DI_CLIP='($(ICLIP))' \
-       -DE_MAX='($(EMAX))' -DVBW='($(VBW))' -DS_MAX='($(SMAX))' -DK_CP='($(KCP))' -DK_CI='($(KCI))' -DK_BA='($(KBA))' -DK_WA='($(KWA))' -DK_BR='($(KBR))' -DK_WR='($(KWR))' -DV_BOOST='($(BOOST))' -DACC_BOOST='($(BACC))' \
+       -DE_MAX='($(EMAX))' -DVBW='($(VBW))' -DS_MAX='($(SMAX))' -DK_CP='($(KCP))' -DK_CI='($(KCI))' -DK_BA='($(KBA))' -DK_WA='($(KWA))' -DK_BR='($(KBR))' -DK_WR='($(KWR))' -DK_BA_S='($(KBAS))' -DK_WR_S='($(KWRS))' -DV_BOOST='($(BOOST))' -DACC_BOOST='($(BACC))' \
        -DCAL_RANGE=$(CAL_RANGE) -DGYRO_TRIM_T='($(GTRIM))' -DBZ_T='($(BZT))' -DBL_I='($(BL))' -DBL_W='($(BLW))' -DREC_DIV=$(LOGDIV) -DLOG_SET=$(LOGSET) -DDIAG=$(DIAG) -DDIAG_DELAY=$(DIAG_DELAY) -DTEST=$(TEST) -DTEST_AMP=$(TAMP) -DTEST_HZ=$(THZ)
 
 # 引数を変えたときに作り直されるよう、main.o は毎回コンパイルする (FORCE)
