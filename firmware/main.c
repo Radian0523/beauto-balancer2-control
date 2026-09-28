@@ -68,7 +68,8 @@
 #define I_CLIP    (8.0)     /* ICLIP: 積分の上限 (車輪角 [rad] 換算)。傾き推定のずれ約 15° まで打ち消せる */
 #endif
 #ifndef E_MAX
-#define E_MAX     (4.0)     /* EMAX: 走行中の車輪角のずれの上限 [rad] (1 rad = 2.1 cm) */
+#define E_MAX     (1.0)     /* EMAX: 走行中の車輪角のずれの上限 [rad] (1 rad = 2.1 cm)。4 だと大きく飛び出したあと 8 cm 取り戻そうとして
+                               * 「進みすぎてキュッと戻る」を繰り返し、坂やシーソーで倒れた */
 #endif
 #ifndef K_CP
 #define K_CP      (4.0)     /* KCP: 純正ライブラリの電流制御の P ゲインの倍率 (純正 = 1)。4 で電流の立ち上がりが 93ms → 5ms、走りがはっきり安定した */
@@ -89,10 +90,10 @@
 #define K_WR      (1.0)     /* KWR: 車輪角速度のゲイン (K4) の倍率 (純正 = 1) */
 #endif
 #ifndef K_BA_S
-#define K_BA_S    (1.3)     /* KBAS: ゆっくりモード (R1) の間だけ使う KBA。モデルで設計: 1Hz の揺れの減衰比 0.06 → 0.6 */
+#define K_BA_S    (1.0)     /* KBAS: ゆっくりモード (R1) の間だけ使う KBA。1.3 は EMAX=4 のときシーソー用に使っていたが、渡る途中が揺れる */
 #endif
 #ifndef K_WR_S
-#define K_WR_S    (1.25)    /* KWRS: ゆっくりモードの間だけ使う KWR。KBAS と組で、シーソーで 3 回連続完走 (純正のままだと傾いた瞬間に後ろに倒れた) */
+#define K_WR_S    (1.0)     /* KWRS: ゆっくりモードの間だけ使う KWR。1.25 だと渡る途中の揺れが 5 → 60°/s。EMAX=1 なら 1 でシーソーを完走 */
 #endif
 #define SLOW_GAIN_T (0.3)   /* ゲインをゆっくりモード用に切り替えるのにかける時間 [s]。一度に変えると蹴られる */
 #ifndef S_MAX
