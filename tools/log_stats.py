@@ -115,6 +115,17 @@ def report(path):
         tilt = st.mean([(r["body_angle_rad"] - r["theta_ref_rad"] - r.get("balance_angle_rad", 0.0)) * DEG for r in l])
         cur = sd([r["current_cmd"] for r in l])
         print(f"  {g:<{12 - len(g)}} {len(l):>4}  {rate:>7.0f}°/s  {verr:>6.2f}m/s  {tilt:>+7.1f}°  {cur:>10.0f}")
+    if "m_current" in rows[0] or "m_current_l" in rows[0]:
+        # 電池の目安: 車輪がほぼ止まっていて、指令が上限を超えているときの実電流 = 出せる最大の電流 (電池の電圧で決まる)
+        def act(r):
+            return abs(r["m_current"]) if "m_current" in r else (abs(r["m_current_l"]) + abs(r["m_current_r"])) / 2
+        stall = sorted(act(r) for r in rows if abs(r["wheel_spd_rad_s"]) * WHEEL_R < 0.1 and abs(r["current_cmd"]) > 2500)
+        if len(stall) >= 3:
+            b = stall[int(len(stall) * 0.9)]
+            note = "  → 電池が弱っている。充電・交換する" if b < 550 else ("  (やや弱い)" if b < 620 else "")
+            print(f"  電池の目安 (止まっているときに出せた最大の電流): {b:.0f}  (満充電で 700 前後){note}")
+        else:
+            print("  電池の目安: この記録では測れなかった (電流が上限に当たる場面が無い)")
     tr = current_tracking(use)
     if tr is None:
         print("  (実際の電流は記録されていない。古いログ)")
