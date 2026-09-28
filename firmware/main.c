@@ -389,9 +389,19 @@ static void gyro_trim(void)
  * 形式: 先頭 8 バイト = 'L', 'G'(通常)/'D'(診断), 変数の数, 間引き, 次に書く位置(2), 有効サンプル数(2)
  *       その後に 1 サンプル = int16 × 13 (リトルエンディアン)
  */
+#ifndef LOG_SET
+#define LOG_SET   (1)       /* LOGSET: 1 = ふつうの記録 (13 変数)、2 = 小さい記録 (6 変数、約 2.2 倍の長さ) */
+#endif
+#if LOG_SET == 2 && DIAG
+#error "DIAG=1 は LOGSET=1 で使う"
+#endif
+#if LOG_SET == 2
+#define LOG_NVAR  (6)       /* 本体角・本体角速度・車輪角速度・電流指令・実際の電流・車輪角のずれ */
+#else
 #define LOG_NVAR  (13)
+#endif
 #define LOG_HDR   (8)
-#define LOG_CAP   ((4096 - LOG_HDR) / (LOG_NVAR * 2))   /* 157 サンプル (25Hz で約 6.3 秒) */
+#define LOG_CAP   ((4096 - LOG_HDR) / (LOG_NVAR * 2))   /* 13 変数: 157 サンプル (25Hz で 6.3 秒)、6 変数: 340 サンプル (13.6 秒) */
 extern uint8_t srcbuf[4096];
 static unsigned int log_idx, log_cnt, log_div;
 
@@ -430,6 +440,15 @@ static void log_sample(void)
 #endif
     if (++log_div < REC_DIV) return;
     log_div = 0;
+#if LOG_SET == 2
+    v[0] = s16(memmap.values.BODY_ANGLE * 1e4);                                 /* 本体角 [0.1 mrad] */
+    v[1] = s16(memmap.values.BODY_ANGULAR_SPD * 1e3);                           /* 本体角速度 [mrad/s] */
+    v[2] = s16((spd_l + spd_r) * 50.0);                                         /* 車輪角速度 (オブザーバ) 平均 [0.01 rad/s] */
+    v[3] = s16((memmap.values.T_CURRENT_L + memmap.values.T_CURRENT_R) * 0.5);  /* 電流指令 平均 */
+    v[4] = s16(((memmap.values.M_CURRENT_L - memmap.values.CURRENT_OFFSET_L)
+              + (memmap.values.M_CURRENT_R - memmap.values.CURRENT_OFFSET_R)) * 0.5);  /* 実際の電流 平均 (生値) */
+    v[5] = (short)(long)((memmap.values.WHEEL_ANGLE_L + memmap.values.WHEEL_ANGLE_R) * 500.0);  /* 車輪角 平均 [mrad]。±32 rad を超えると折り返す (読むときにつなぐ) */
+#else
     v[0] = s16(memmap.values.BODY_ANGLE * 1e4);                                 /* 本体角 [0.1 mrad] */
     v[1] = s16(th_ref * 1e4);                                                   /* 目標前傾 [0.1 mrad] */
     v[2] = s16(memmap.values.BODY_ANGULAR_SPD * 1e3);                           /* 本体角速度 [mrad/s] */
@@ -444,6 +463,7 @@ static void log_sample(void)
     v[10] = s16(w_cmd * 100.0);                                                 /* 旋回の指令 [0.01 rad/s] */
     v[11] = s16((memmap.values.BODY_ANGULAR_SPD_OFFSET - cal_offset) * 100.0);  /* ジャイロ 0 点の補正量 [0.01 LSB] */
     v[12] = s16(th0 * 1e4);                                                     /* 釣り合う角度 (推定) [0.1 mrad] */
+#endif
 #if DIAG
     v[1] = s16(dg_sum / REC_DIV * 100.0);    /* 生ジャイロ (0 点を引いた値) の区間平均 [0.01 LSB] */
     v[4] = s16(dg_theta * 1e4);              /* 生ジャイロを単純積分した傾き [0.1 mrad] (0 に戻す処理なし) */

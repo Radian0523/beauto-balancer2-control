@@ -94,6 +94,13 @@ def report(path):
     fall, use = cut_end(rows)
     name = os.path.basename(path)
     print(f"\n== {name}   ({len(rows)} サンプル、" + (f"倒れた: {fall:+.2f} s" if fall is not None else "倒れていない") + ")")
+    if "theta_ref_rad" not in rows[0]:
+        # 小さい記録 (LOGSET=2): 目標が無いので状態別には分けず、全体の揺れだけ出す
+        print(f"  (小さい記録) 本体角速度の揺れ {sd([r['body_rate_rad_s'] * DEG for r in use]):.0f}°/s"
+              f"  電流指令の揺れ {sd([r['current_cmd'] for r in use]):.0f}")
+        return {"name": name, "rate": float("nan"), "verr": float("nan"),
+                "vmax": max(r["wheel_spd_rad_s"] for r in rows) * WHEEL_R,
+                "vmin": min(r["wheel_spd_rad_s"] for r in rows) * WHEEL_R, "fall": fall}
     groups = {}
     for r in use:
         groups.setdefault(phase(r), []).append(r)

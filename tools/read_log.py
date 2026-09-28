@@ -29,6 +29,9 @@ DIAG_NAMES = ["body_angle_rad", "gyro_raw_mean_lsb", "body_rate_rad_s", "wheel_s
               "theta_rawint_rad", "current_cmd", "gyro_updates", "wheel_err_int_rad_s"]
 DIAG_SCALE = [1e-4, 1e-2, 1e-3, 1e-2, 1e-4, 1.0, 1.0, 1e-3]
 GYRO_K = 0.041849 * 0.125     # 純正 GyroProc の換算 [rad/s per LSB]
+# 小さい記録 (make LOGSET=2、6 変数)。車輪角は ±32 rad で折り返して記録されるのでつなぎ直す
+COMPACT_NAMES = ["body_angle_rad", "body_rate_rad_s", "wheel_spd_rad_s", "current_cmd", "m_current", "wheel_angle_rad"]
+COMPACT_SCALE = [1e-4, 1e-3, 1e-2, 1.0, 1.0, 1e-3]
 # 末尾に付く列 (変数の数で見分ける)
 #   10 変数版: 実際の電流 (左, 右)
 #   11 変数版: 実際の電流 (左右平均), 向きのずれ (左右の車輪角のずれの差), 旋回の指令
@@ -82,8 +85,11 @@ def main():
     diag = hdr[:2] == b"LD"
     names, scale = (DIAG_NAMES, DIAG_SCALE) if diag else (NAMES, SCALE)
     nvar, div = hdr[2], hdr[3]
-    en, es = EXTRA.get(nvar, ([], []))
-    names, scale = (names + en)[:nvar], (scale + es)[:nvar]
+    if nvar == 6:
+        names, scale = COMPACT_NAMES, COMPACT_SCALE
+    else:
+        en, es = EXTRA.get(nvar, ([], []))
+        names, scale = (names + en)[:nvar], (scale + es)[:nvar]
     idx, cnt = struct.unpack_from("<HH", hdr, 4)
     rate = 500.0 / div
     cap = (4096 - HDR) // (nvar * 2)
@@ -97,6 +103,8 @@ def main():
     start = (idx - cnt) % cap                 # リングの古い順に並べ直す
     rows = [rows[(start + i) % cap] for i in range(cnt)]
     t = [(i - cnt + 1) / rate for i in range(cnt)]     # 止めた瞬間を 0 秒
+    if nvar == 6:
+        rows = unwrap(rows, 5)
     data = [[v * k for v, k in zip(r, scale)] for r in rows]
 
     os.makedirs("logs", exist_ok=True)
@@ -114,6 +122,11 @@ def main():
     plt.rcParams["font.family"] = ["Hiragino Sans", "sans-serif"]
     col = list(zip(*data))
     deg = 57.29578
+    if nvar == 6:
+        plot_compact(plt, t, col, rate, stamp)
+        print(f"保存: {path_csv}\n保存: logs/run_{stamp}.png")
+        subprocess.run(["open", f"logs/run_{stamp}.png"])
+        return
     if diag:
         plot_diag(plt, t, col, rate, stamp)
         print(f"保存: {path_csv}\n保存: logs/diag_{stamp}.png")
@@ -165,6 +178,46 @@ def main():
     print(f"保存: {path_csv}\n保存: {path_png}")
     subprocess.run([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), "log_stats.py"), path_csv])
     subprocess.run(["open", path_png])
+
+
+def unwrap(rows, col):
+    """int16 で折り返して記録された列をつなぎ直す"""
+    out, off, prev = [], 0, None
+    for r in rows:
+        v = r[col]
+        if prev is not None:
+            if v - prev > 32768:
+                off -= 65536
+            elif v - prev < -32768:
+                off += 65536
+        prev = v
+        r = list(r)
+        r[col] = v + off
+        out.append(r)
+    return out
+
+
+def plot_compact(plt, t, col, rate, stamp):
+    deg = 57.29578
+    fig, ax = plt.subplots(4, 1, figsize=(11, 10), sharex=True)
+    ax[0].plot(t, [x * deg for x in col[0]], label="本体角 (純正の推定)")
+    ax[0].set_ylabel("deg")
+    ax[1].plot(t, [x * deg for x in col[1]], label="本体角速度")
+    ax[1].set_ylabel("deg/s")
+    ax[2].plot(t, [x * WHEEL_R for x in col[2]], label="速度 (車輪)")
+    ax2 = ax[2].twinx()
+    ax2.plot(t, [x * WHEEL_R * 100 for x in col[5]], color="tab:orange", lw=0.8, label="車輪の位置 [cm]")
+    ax2.legend(loc="upper right", fontsize=9)
+    ax[2].set_ylabel("m/s")
+    ax[3].plot(t, col[3], label="電流指令 (左右平均)")
+    ax[3].plot(t, [x * 10 for x in col[4]], lw=0.8, label="実際の電流 ×10")
+    ax[3].set_xlabel("止めた瞬間からの時間 [s]")
+    for a in ax:
+        a.grid(alpha=0.3)
+        a.legend(loc="upper left", fontsize=9)
+    fig.suptitle(f"走行ログ (小さい記録) {stamp} ({rate:.0f} Hz)")
+    fig.tight_layout()
+    fig.savefig(f"logs/run_{stamp}.png", dpi=110)
 
 
 def plot_diag(plt, t, col, rate, stamp):
