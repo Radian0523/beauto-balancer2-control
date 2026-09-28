@@ -41,7 +41,7 @@ stock: build/stock.bin
 .PHONY: stock
 
 # v5 (main.c) の調整値。 ../bb2 flash v5 VMAX=0.4 のように上書きする。意味は main.c の先頭
-VMAX ?= 0.5
+VMAX ?= 0.3
 VBACK ?= 0.3
 VSLOW ?= 0.08
 ACC ?= 0.5
@@ -50,13 +50,13 @@ TI ?= 2
 ICLIP ?= 8
 EMAX ?= 4
 VBW ?= 20
-SMAX ?= 0
+SMAX ?= 0.4
 KCP ?= 4
 KCI ?= 1
-KBA ?= 1
+KBA ?= 1.3
 KWA ?= 1
 KBR ?= 1
-KWR ?= 1
+KWR ?= 1.25
 BOOST ?= 0
 BACC ?= 0.6
 CAL_RANGE ?= 80
