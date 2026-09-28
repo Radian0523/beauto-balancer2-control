@@ -6,7 +6,7 @@
 見かた
   角速度の揺れ  … 本体角速度の標準偏差。11Hz の細かい振動の大きさ (小さいほど良い)
   速度の揺れ    … 車輪速度 - 目標速度 の標準偏差 (小さいほど良い)
-  傾きのずれ    … 本体角 - 目標前傾 の平均。傾き推定の 0 点のずれ (0 に近いほど良い)
+  傾きのずれ    … 本体角 - 目標前傾 (- 釣り合う角度) の平均。制御が見ている傾きのずれ (0 に近いほど良い)
   電流の追従    … 実際の電流 ÷ 電流指令 (低速のときを 1 とした比)。速いときに下がるなら
                    モータの逆起電力で電圧が足りず、指令どおりの力が出ていない
 倒れた (またはつかんで持ち上げた) 後は集計から外す。
@@ -105,7 +105,7 @@ def report(path):
             continue
         rate = sd([r["body_rate_rad_s"] * DEG for r in l])
         verr = sd([(r["wheel_spd_rad_s"] - r["target_spd_rad_s"]) * WHEEL_R for r in l])
-        tilt = st.mean([(r["body_angle_rad"] - r["theta_ref_rad"]) * DEG for r in l])
+        tilt = st.mean([(r["body_angle_rad"] - r["theta_ref_rad"] - r.get("balance_angle_rad", 0.0)) * DEG for r in l])
         cur = sd([r["current_cmd"] for r in l])
         print(f"  {g:<{12 - len(g)}} {len(l):>4}  {rate:>7.0f}°/s  {verr:>6.2f}m/s  {tilt:>+7.1f}°  {cur:>10.0f}")
     tr = current_tracking(use)
@@ -130,6 +130,9 @@ def report(path):
               f"向きのずれ 平均 {st.mean(ye):+.1f} cm 最大 {max(ye, key=abs):+.1f} cm")
         if still and turning == 0:
             print("    → スティックは中立。回ったならスティック以外 (左右の車輪の差) が原因")
+    if "balance_angle_rad" in rows[0]:
+        b = [r["balance_angle_rad"] * DEG for r in rows]
+        print(f"  釣り合う角度 (推定): 記録の最初 {b[0]:+.1f}° → 最後 {b[-1]:+.1f}° (スタート時の持ち方のずれ)")
     if "gyro_trim_lsb" in rows[0]:
         tr = [r["gyro_trim_lsb"] for r in rows]
         print(f"  ジャイロ 0 点の補正量: 記録の最初 {tr[0]:+.1f} LSB → 最後 {tr[-1]:+.1f} LSB"

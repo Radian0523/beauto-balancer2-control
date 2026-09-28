@@ -9,6 +9,7 @@
  *   gyro_trim()       ジャイロの 0 点を走行中も少しずつ合わせ込む (校正のずれ対策)
  *   pad_to_speed()    ① スティック → 滑らかな目標軌道 + 目標前傾 (フィードフォワード)
  *   wheel_observer()  ② 車輪角 → なめらかな車輪角速度 (オブザーバ)
+ *   balance_zero()    釣り合う角度を覚え直す (スタート時の持ち方に左右されないように)
  *   control()         ③ 状態フィードバック → 電流指令 (純正 Control() に目標前傾・積分・ずれ上限を足したもの)
  *   log_sample()      走行ログを RAM に記録
  *   電流指令は [純正ライブラリ] の電流制御 (1kHz) がモータに流す。
@@ -65,6 +66,9 @@
 #endif
 #ifndef GYRO_TRIM_T
 #define GYRO_TRIM_T (5.0)   /* GTRIM: 走行中のジャイロ 0 点補正の時定数 [s]。0 で無効 */
+#endif
+#ifndef BZ_T
+#define BZ_T      (2.0)     /* BZT: 釣り合う角度を覚え直す時定数 [s] (スタート直後 BZ_T0 秒は BZ_T_FAST)。0 で無効 */
 #endif
 #ifndef CAL_RANGE
 #define CAL_RANGE (30)      /* CAL_RANGE: 校正中のジャイロの揺れ (最大 - 最小) がこれを超えたらやり直す [LSB] */
@@ -189,11 +193,43 @@ static void wheel_observer(void)
     spd_r = ob_v[1];
 }
 
+/* ============================================================ 釣り合う角度の推定
+ *
+ * 純正の傾き推定は、スタートボタンを押した瞬間の姿勢を 0° としてジャイロを積分したもの。
+ * 本当の鉛直はわからない (加速度センサが無い) ので、押したときの持ち方がそのまま傾きのずれとして
+ * 最後まで残る (本番コースで -17° を実測。昨日の ±2〜20° のばらつきも主にこれ)。
+ * 機体が立っていて加速していない間は、本当の傾きの平均は必ず「釣り合う角度」になる (物理的に決まる)。
+ * そこで、加速していない間の (傾き推定 - 目標前傾) の平均を釣り合う角度 th0 として覚え、
+ * ③ では th0 からのずれを使う。
+ *   - スタート直後 BZ_T0 秒は速く (BZ_T_FAST)、その後は BZ_T でゆっくり覚え直す
+ *   - 1 回に効かせるずれは ±BZ_STEP まで (倒れる途中や段差の衝撃に引っ張られないように)
+ *   - th0 は ±BZ_MAX まで
+ *   - 加速・減速中は覚えない (前傾フィードフォワードとの差を釣り合う角度と取り違えないように)
+ */
+#define BZ_T0     (3.0)                 /* [s] */
+#define BZ_T_FAST (0.7)                 /* [s] */
+#define BZ_STEP   (0.1)                 /* [rad] 約 6° */
+#define BZ_MAX    (0.44)                /* [rad] 約 25° */
+static double th0;                      /* 釣り合う角度 (純正の傾き推定の目盛りで) [rad] */
+static int bz_tick;                     /* スタートからの周期数 */
+
+static void balance_zero(void)
+{
+#if BZ_T > 0
+    double tau = (bz_tick < (int)(BZ_T0 * MAIN_CYCLE)) ? BZ_T_FAST : BZ_T;
+    if (bz_tick < (int)(BZ_T0 * MAIN_CYCLE)) bz_tick++;
+    if (!ramping) {
+        double e = clamp(memmap.values.BODY_ANGLE - th_ref - th0, -BZ_STEP, BZ_STEP);
+        th0 = clamp(th0 + e / (tau * MAIN_CYCLE), -BZ_MAX, BZ_MAX);
+    }
+#endif
+}
+
 /* ============================================================ ③ 状態フィードバック
  *
  * 純正 Control() と同じ形: 本体の傾き・傾く速さ・車輪角のずれ・車輪角速度のずれ に純正ゲインを掛けて足す。
  * 純正から変えたところ ([v5] の行)
- *   - 本体の傾きは直立ではなく ① の目標前傾 th_ref からのずれにする
+ *   - 本体の傾きは直立ではなく、釣り合う角度 th0 + ① の目標前傾 th_ref からのずれにする
  *   - 走行中だけ車輪角のずれ (左右の平均) に上限 E_MAX をかける (段差対策)
  *   - 車輪角速度は ② のオブザーバの値を使い、純正の単位の間違い (T_SPD / MAIN_CYCLE) を直す
  *   - 車輪角のずれの積分を足す (坂対策)
@@ -209,7 +245,7 @@ static void control(void)
     double kw  = memmap.values.GAIN_WHEEL;
     double kwa = memmap.values.GAIN_WHEEL_ANGLE;
     /* 本体の項 [v5] 目標前傾からのずれ */
-    double body = memmap.values.GAIN_BODY * (memmap.values.GAIN_BODY_ANGLE * (memmap.values.BODY_ANGLE - th_ref)
+    double body = memmap.values.GAIN_BODY * (memmap.values.GAIN_BODY_ANGLE * (memmap.values.BODY_ANGLE - th0 - th_ref)
                 + memmap.values.GAIN_BODY_ANGULAR_SPD * K_BR * (memmap.values.BODY_ANGULAR_SPD - dth_ref));
 
     /* 目標車輪角 = 目標角速度の積分 (純正と同じ) */
@@ -307,11 +343,11 @@ static void gyro_trim(void)
  * srcbuf は USB の 'R' コマンドで 0x1000 番地から読める (純正のログ機能は止めているので衝突しない)。
  *
  * 形式: 先頭 8 バイト = 'L', 'G'(通常)/'D'(診断), 変数の数, 間引き, 次に書く位置(2), 有効サンプル数(2)
- *       その後に 1 サンプル = int16 × 12 (リトルエンディアン)
+ *       その後に 1 サンプル = int16 × 13 (リトルエンディアン)
  */
-#define LOG_NVAR  (12)
+#define LOG_NVAR  (13)
 #define LOG_HDR   (8)
-#define LOG_CAP   ((4096 - LOG_HDR) / (LOG_NVAR * 2))   /* 170 サンプル (25Hz で約 6.8 秒) */
+#define LOG_CAP   ((4096 - LOG_HDR) / (LOG_NVAR * 2))   /* 157 サンプル (25Hz で約 6.3 秒) */
 extern uint8_t srcbuf[4096];
 static unsigned int log_idx, log_cnt, log_div;
 
@@ -363,6 +399,7 @@ static void log_sample(void)
     v[9] = s16((last_el - last_er) * 1e3);                                      /* 向きのずれ = 左右の車輪角のずれの差 [mrad] */
     v[10] = s16(w_cmd * 100.0);                                                 /* 旋回の指令 [0.01 rad/s] */
     v[11] = s16((memmap.values.BODY_ANGULAR_SPD_OFFSET - cal_offset) * 100.0);  /* ジャイロ 0 点の補正量 [0.01 LSB] */
+    v[12] = s16(th0 * 1e4);                                                     /* 釣り合う角度 (推定) [0.1 mrad] */
 #if DIAG
     v[1] = s16(dg_sum / REC_DIV * 100.0);    /* 生ジャイロ (0 点を引いた値) の区間平均 [0.01 LSB] */
     v[4] = s16(dg_theta * 1e4);              /* 生ジャイロを単純積分した傾き [0.1 mrad] (0 に戻す処理なし) */
@@ -416,6 +453,8 @@ static void reset_state(void)
     ref_l = ref_r = int_l = int_r = 0.0;
     v_cmd = w_cmd = 0.0;
     a_cmd = th_ref = dth_ref = 0.0;
+    th0 = 0.0;
+    bz_tick = 0;
     boost_left = 0;
     ob_init = 0;
     btn_idle = btn_prev = memmap.values.PAD_BTN;
@@ -477,6 +516,7 @@ int main(void)
             gyro_trim();
             pad_to_speed();
             wheel_observer();
+            balance_zero();
             control();
             log_sample();
             if (slow == 1) {

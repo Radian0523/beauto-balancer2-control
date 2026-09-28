@@ -33,10 +33,12 @@ GYRO_K = 0.041849 * 0.125     # 純正 GyroProc の換算 [rad/s per LSB]
 #   10 変数版: 実際の電流 (左, 右)
 #   11 変数版: 実際の電流 (左右平均), 向きのずれ (左右の車輪角のずれの差), 旋回の指令
 #   12 変数版: 11 変数版 + ジャイロ 0 点の補正量 (校正の値からどれだけ動かしたか)
+#   13 変数版: 12 変数版 + 釣り合う角度 (推定。制御はここからのずれを使う)
 EXTRA = {
     10: (["m_current_l", "m_current_r"], [1.0, 1.0]),
     11: (["m_current", "yaw_err_rad", "turn_cmd_rad_s"], [1.0, 1e-3, 1e-2]),
     12: (["m_current", "yaw_err_rad", "turn_cmd_rad_s", "gyro_trim_lsb"], [1.0, 1e-3, 1e-2, 1e-2]),
+    13: (["m_current", "yaw_err_rad", "turn_cmd_rad_s", "gyro_trim_lsb", "balance_angle_rad"], [1.0, 1e-3, 1e-2, 1e-2, 1e-4]),
 }
 
 
@@ -123,7 +125,11 @@ def main():
     npanel = 5 + yaw + trim
     fig, ax = plt.subplots(npanel, 1, figsize=(11, 12 + 2 * (npanel - 5)), sharex=True)
     ax[0].plot(t, [x * deg for x in col[0]], label="本体角 (純正の推定)")
-    ax[0].plot(t, [x * deg for x in col[1]], "--", label="目標角 (前傾FF)")
+    if nvar >= 13:
+        ax[0].plot(t, [(a + b) * deg for a, b in zip(col[1], col[12])], "--", label="目標角 (釣り合う角度 + 前傾FF)")
+        ax[0].plot(t, [x * deg for x in col[12]], ":", label="釣り合う角度 (推定)")
+    else:
+        ax[0].plot(t, [x * deg for x in col[1]], "--", label="目標角 (前傾FF)")
     ax[0].set_ylabel("deg")
     ax[1].plot(t, [x * deg for x in col[2]], label="本体角速度")
     ax[1].set_ylabel("deg/s")
