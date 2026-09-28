@@ -122,7 +122,7 @@ def report(path):
         stall = sorted(act(r) for r in rows if abs(r["wheel_spd_rad_s"]) * WHEEL_R < 0.1 and abs(r["current_cmd"]) > 2500)
         if len(stall) >= 3:
             b = stall[int(len(stall) * 0.9)]
-            note = "  → 電池が弱っている。充電・交換する" if b < 550 else ("  (やや弱い)" if b < 620 else "")
+            note = "  → 電池が弱っている。充電・交換する" if b < 600 else ("  → そろそろ換えどき (650 未満で揺れの収まりが悪くなる)" if b < 650 else "")
             print(f"  電池の目安 (止まっているときに出せた最大の電流): {b:.0f}  (満充電で 700 前後){note}")
         else:
             print("  電池の目安: この記録では測れなかった (電流が上限に当たる場面が無い)")
