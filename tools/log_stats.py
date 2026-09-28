@@ -130,6 +130,10 @@ def report(path):
               f"向きのずれ 平均 {st.mean(ye):+.1f} cm 最大 {max(ye, key=abs):+.1f} cm")
         if still and turning == 0:
             print("    → スティックは中立。回ったならスティック以外 (左右の車輪の差) が原因")
+    if "gyro_trim_lsb" in rows[0]:
+        tr = [r["gyro_trim_lsb"] for r in rows]
+        print(f"  ジャイロ 0 点の補正量: 記録の最初 {tr[0]:+.1f} LSB → 最後 {tr[-1]:+.1f} LSB"
+              f" (校正のずれ。1 LSB ≒ 傾き 0.2°)")
     s = [r for r in use if phase(r) == "止まっている"]
     return {
         "name": name,

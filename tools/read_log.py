@@ -32,9 +32,11 @@ GYRO_K = 0.041849 * 0.125     # 純正 GyroProc の換算 [rad/s per LSB]
 # 末尾に付く列 (変数の数で見分ける)
 #   10 変数版: 実際の電流 (左, 右)
 #   11 変数版: 実際の電流 (左右平均), 向きのずれ (左右の車輪角のずれの差), 旋回の指令
+#   12 変数版: 11 変数版 + ジャイロ 0 点の補正量 (校正の値からどれだけ動かしたか)
 EXTRA = {
     10: (["m_current_l", "m_current_r"], [1.0, 1.0]),
     11: (["m_current", "yaw_err_rad", "turn_cmd_rad_s"], [1.0, 1e-3, 1e-2]),
+    12: (["m_current", "yaw_err_rad", "turn_cmd_rad_s", "gyro_trim_lsb"], [1.0, 1e-3, 1e-2, 1e-2]),
 }
 
 
@@ -117,7 +119,9 @@ def main():
         subprocess.run(["open", f"logs/diag_{stamp}.png"])
         return
     yaw = nvar >= 11
-    fig, ax = plt.subplots(6 if yaw else 5, 1, figsize=(11, 14 if yaw else 12), sharex=True)
+    trim = nvar >= 12
+    npanel = 5 + yaw + trim
+    fig, ax = plt.subplots(npanel, 1, figsize=(11, 12 + 2 * (npanel - 5)), sharex=True)
     ax[0].plot(t, [x * deg for x in col[0]], label="本体角 (純正の推定)")
     ax[0].plot(t, [x * deg for x in col[1]], "--", label="目標角 (前傾FF)")
     ax[0].set_ylabel("deg")
@@ -140,6 +144,10 @@ def main():
         ax[5].plot(t, [x * WHEEL_R * 100 for x in col[9]], label="向きのずれ (左右の車輪のずれの差) [cm]")
         ax[5].plot(t, col[10], label="旋回の指令 [rad/s] (0 以外ならスティックが効いている)")
         ax[5].axhline(0, color="k", lw=0.5)
+    if trim:
+        ax[6].plot(t, col[11], label="ジャイロ 0 点の補正量 [LSB] (校正のずれ。1 LSB ≒ 傾き 0.2°)")
+        ax[6].axhline(0, color="k", lw=0.5)
+        ax[6].set_ylabel("LSB")
     ax[-1].set_xlabel("止めた瞬間からの時間 [s]")
     for a in ax:
         a.grid(alpha=0.3)

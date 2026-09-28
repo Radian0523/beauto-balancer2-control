@@ -6,6 +6,7 @@
  *
  * 1 周期 (500Hz) の流れ (main の走行ループ)
  *   CycleProc()       [純正ライブラリ] センサー読み取り・傾き推定・周期待ち
+ *   gyro_trim()       ジャイロの 0 点を走行中も少しずつ合わせ込む (校正のずれ対策)
  *   pad_to_speed()    ① スティック → 滑らかな目標軌道 + 目標前傾 (フィードフォワード)
  *   wheel_observer()  ② 車輪角 → なめらかな車輪角速度 (オブザーバ)
  *   control()         ③ 状態フィードバック → 電流指令 (純正 Control() に目標前傾・積分・ずれ上限を足したもの)
@@ -61,6 +62,9 @@
 #endif
 #ifndef ACC_BOOST
 #define ACC_BOOST (0.6)     /* BACC: ダッシュの加速度上限 [m/s^2] */
+#endif
+#ifndef GYRO_TRIM_T
+#define GYRO_TRIM_T (5.0)   /* GTRIM: 走行中のジャイロ 0 点補正の時定数 [s]。0 で無効 */
 #endif
 #ifndef CAL_RANGE
 #define CAL_RANGE (30)      /* CAL_RANGE: 校正中のジャイロの揺れ (最大 - 最小) がこれを超えたらやり直す [LSB] */
@@ -259,6 +263,43 @@ static void control(void)
     memmap.values.T_CURRENT_R = (short)clamp(outR, -32767.0, 32767.0);
 }
 
+/* ============================================================ ジャイロの 0 点の補正
+ *
+ * 校正 (5 秒間の平均) の 0 点は回によって数〜数十 LSB ずれ、そのぶん純正の傾き推定が
+ * 一定の角度だけずれる (1 LSB で約 0.2°。-2〜-17° を実測)。機体は「傾いている」と思い込んで押し続け、
+ * 止まっていても前に出る・車輪のずれが上限に張り付く・積分が上限に溜まる、の原因になっていた。
+ * 立っている限り、傾く速さを長い時間で平均すると 0 になる (傾きは行ったり来たりするだけ) ので、
+ * ジャイロの生の値を時定数 GYRO_TRIM_T 秒で平均したものを 0 点として使い続ける。
+ *   - 1 回に効かせる値は ±TRIM_CLIP に制限 (11Hz の振動や倒れる瞬間の大きな値に引っ張られないように)
+ *   - 校正の値から ±TRIM_MAX より外には動かさない
+ *   - 倒れて止まったときは、0.5〜1 秒前の値に戻す (倒れる途中の値を次の走行に持ち越さない)
+ */
+#define TRIM_CLIP (1000.0)          /* [LSB] 約 300°/s。立っているときの振動 (±100°/s 程度) は切らない */
+#define TRIM_MAX  (60.0)            /* [LSB] */
+static double cal_offset;           /* 校正で決まった 0 点 [LSB] */
+static double trim_hist[2];         /* 0.5 秒ごとの 0 点の履歴 ([0] が新しい) */
+static int trim_tick;
+
+static void gyro_trim_reset(void)
+{
+    trim_hist[0] = trim_hist[1] = memmap.values.BODY_ANGULAR_SPD_OFFSET;
+    trim_tick = 0;
+}
+
+static void gyro_trim(void)
+{
+#if GYRO_TRIM_T > 0
+    double g = clamp(memmap.values.GYRO_DATA - memmap.values.BODY_ANGULAR_SPD_OFFSET, -TRIM_CLIP, TRIM_CLIP);
+    double off = memmap.values.BODY_ANGULAR_SPD_OFFSET + g / (GYRO_TRIM_T * MAIN_CYCLE);
+    memmap.values.BODY_ANGULAR_SPD_OFFSET = clamp(off, cal_offset - TRIM_MAX, cal_offset + TRIM_MAX);
+    if (++trim_tick >= MAIN_CYCLE / 2) {
+        trim_tick = 0;
+        trim_hist[1] = trim_hist[0];
+        trim_hist[0] = memmap.values.BODY_ANGULAR_SPD_OFFSET;
+    }
+#endif
+}
+
 /* ============================================================ 走行ログ
  *
  * 走行中の値を機体の RAM (純正ライブラリのログ用バッファ srcbuf, 4KB) にリングバッファで記録する。
@@ -266,11 +307,11 @@ static void control(void)
  * srcbuf は USB の 'R' コマンドで 0x1000 番地から読める (純正のログ機能は止めているので衝突しない)。
  *
  * 形式: 先頭 8 バイト = 'L', 'G'(通常)/'D'(診断), 変数の数, 間引き, 次に書く位置(2), 有効サンプル数(2)
- *       その後に 1 サンプル = int16 × 11 (リトルエンディアン)
+ *       その後に 1 サンプル = int16 × 12 (リトルエンディアン)
  */
-#define LOG_NVAR  (11)
+#define LOG_NVAR  (12)
 #define LOG_HDR   (8)
-#define LOG_CAP   ((4096 - LOG_HDR) / (LOG_NVAR * 2))   /* 185 サンプル (25Hz で約 7.4 秒) */
+#define LOG_CAP   ((4096 - LOG_HDR) / (LOG_NVAR * 2))   /* 170 サンプル (25Hz で約 6.8 秒) */
 extern uint8_t srcbuf[4096];
 static unsigned int log_idx, log_cnt, log_div;
 
@@ -321,6 +362,7 @@ static void log_sample(void)
               + (memmap.values.M_CURRENT_R - memmap.values.CURRENT_OFFSET_R)) * 0.5);  /* 実際の電流 平均 (生値) */
     v[9] = s16((last_el - last_er) * 1e3);                                      /* 向きのずれ = 左右の車輪角のずれの差 [mrad] */
     v[10] = s16(w_cmd * 100.0);                                                 /* 旋回の指令 [0.01 rad/s] */
+    v[11] = s16((memmap.values.BODY_ANGULAR_SPD_OFFSET - cal_offset) * 100.0);  /* ジャイロ 0 点の補正量 [0.01 LSB] */
 #if DIAG
     v[1] = s16(dg_sum / REC_DIV * 100.0);    /* 生ジャイロ (0 点を引いた値) の区間平均 [0.01 LSB] */
     v[4] = s16(dg_theta * 1e4);              /* 生ジャイロを単純積分した傾き [0.1 mrad] (0 に戻す処理なし) */
@@ -398,6 +440,7 @@ int main(void)
     Wait(1000);
 
     calibrate_checked();
+    cal_offset = memmap.values.BODY_ANGULAR_SPD_OFFSET;
     reset_state();
 
     while (1) {
@@ -426,16 +469,21 @@ int main(void)
         }
 #endif
         CurrentControlEnable();
+        gyro_trim_reset();
 
         /* 走行 (500Hz) */
         while (1) {
             uint8_t slow = CycleProc();
+            gyro_trim();
             pad_to_speed();
             wheel_observer();
             control();
             log_sample();
             if (slow == 1) {
-                if (isWhleeOverSpeed() != 0) break;     /* 転倒 (車輪の回りすぎ) で停止 */
+                if (isWhleeOverSpeed() != 0) {          /* 転倒 (車輪の回りすぎ) で停止 */
+                    memmap.values.BODY_ANGULAR_SPD_OFFSET = trim_hist[1];   /* 倒れる前の 0 点に戻す */
+                    break;
+                }
                 if (getSW() == 1) {                     /* ボタンで停止 */
                     while (getSW() == 1) __NOP();
                     break;
