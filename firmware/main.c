@@ -35,7 +35,7 @@
 #define V_BACK    (0.3)     /* VBACK: 後退の最高速度 [m/s]。後退 0.47 m/s からの減速で倒れたので前進より低くする */
 #endif
 #ifndef V_SLOW
-#define V_SLOW    (0.08)    /* VSLOW: ボタンを押している間の最高速度 [m/s] (ゆっくりモード。シーソーの支点に寄せるとき)。0 で無効 */
+#define V_SLOW    (0.08)    /* VSLOW: ボタンを押している間に自動で進む速さ [m/s] (ゆっくりモード。シーソーを渡るとき)。0 で無効 */
 #endif
 #ifndef ACC_MAX
 #define ACC_MAX   (0.5)     /* ACC: 加速度の上限 [m/s^2] */
@@ -182,10 +182,13 @@ static void pad_to_speed(void)
     }
 
     if (v_tgt < -V_BACK) v_tgt = -V_BACK;                        /* 後退だけ遅くする */
-    /* ゆっくりモード: ボタン (どれでも) を押している間は、スティックを倒しきっても V_SLOW まで、旋回も半分。
-     * シーソーは重心が支点を越えた瞬間に傾くので、支点のすぐ近くで越えられるよう細かく速さを調整するため */
+    /* ゆっくりモード: ボタン (どれでも) を押している間は、スティックに触らなくても V_SLOW で前に進み続ける。
+     * スティックを後ろに引いたときだけ減速・後退する (後ろに倒しきると -V_SLOW)。旋回は半分の速さ。
+     * シーソーは止まった状態で傾くと揺れが育って倒れる。傾きそうになると思わずスティックを戻してしまうので
+     * (13:38 に失敗した回)、ボタンを押し続けるだけで一定の速さで渡りきれるようにする */
     if (V_SLOW > 0 && V_BOOST <= 0 && btn != btn_idle) {
-        v_tgt = -stick(memmap.values.PAD_AN_LY, ly0) * V_SLOW;
+        double s = -stick(memmap.values.PAD_AN_LY, ly0);        /* 前 +1 〜 後ろ -1 */
+        v_tgt = (s < 0) ? V_SLOW * (1.0 + 2.0 * s) : V_SLOW;    /* 引かなければ +V_SLOW、引ききると -V_SLOW */
         w_tgt *= 0.5;
     }
 
