@@ -34,6 +34,9 @@
 #ifndef V_BACK
 #define V_BACK    (0.3)     /* VBACK: 後退の最高速度 [m/s]。後退 0.47 m/s からの減速で倒れたので前進より低くする */
 #endif
+#ifndef V_SLOW
+#define V_SLOW    (0.08)    /* VSLOW: ボタンを押している間の最高速度 [m/s] (ゆっくりモード。シーソーの支点に寄せるとき)。0 で無効 */
+#endif
 #ifndef ACC_MAX
 #define ACC_MAX   (0.5)     /* ACC: 加速度の上限 [m/s^2] */
 #endif
@@ -154,6 +157,12 @@ static void pad_to_speed(void)
     }
 
     if (v_tgt < -V_BACK) v_tgt = -V_BACK;                        /* 後退だけ遅くする */
+    /* ゆっくりモード: ボタン (どれでも) を押している間は、スティックを倒しきっても V_SLOW まで、旋回も半分。
+     * シーソーは重心が支点を越えた瞬間に傾くので、支点のすぐ近くで越えられるよう細かく速さを調整するため */
+    if (V_SLOW > 0 && V_BOOST <= 0 && btn != btn_idle) {
+        v_tgt = -stick(memmap.values.PAD_AN_LY, ly0) * V_SLOW;
+        w_tgt *= 0.5;
+    }
 
     a_des = clamp(K_V * (v_tgt - v_cmd), -amax, amax);                          /* 速度の差 → 欲しい加速度 */
     a_new = a_cmd + clamp(a_des - a_cmd, -JERK / MAIN_CYCLE, JERK / MAIN_CYCLE); /* 加速度は急に変えない */
