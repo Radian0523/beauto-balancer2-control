@@ -52,6 +52,12 @@
 #ifndef E_MAX
 #define E_MAX     (4.0)     /* EMAX: 走行中の車輪角のずれの上限 [rad] (1 rad = 2.1 cm) */
 #endif
+#ifndef K_CP
+#define K_CP      (1.0)     /* KCP: 純正ライブラリの電流制御の P ゲインの倍率 (純正 = 1)。電流の立ち上がりを速くする */
+#endif
+#ifndef K_CI
+#define K_CI      (1.0)     /* KCI: 同じく I ゲインの倍率 */
+#endif
 #ifndef K_BA
 #define K_BA      (1.0)     /* KBA: 本体の傾きのゲイン (K1) の倍率 (純正 = 1) */
 #endif
@@ -539,6 +545,10 @@ int main(void)
 {
     Balancer2Init();
     UARTInit(CBR_115200, non, 1);
+    /* 純正の電流制御は遅い (指令 1500 の段で実電流が上がりきるまで約 100ms、実験 B)。
+     * ゲインは memmap にあるので、起動時に倍率を掛ける (フラッシュには保存しない) */
+    memmap.values.GAIN_CURRENT_P *= K_CP;
+    memmap.values.GAIN_CURRENT_I *= K_CI;
     CurrentControlDisable();
     setLED(3);
 

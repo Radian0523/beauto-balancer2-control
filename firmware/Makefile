@@ -50,6 +50,8 @@ TI ?= 2
 ICLIP ?= 8
 EMAX ?= 4
 VBW ?= 20
+KCP ?= 1
+KCI ?= 1
 KBA ?= 1
 KWA ?= 1
 KBR ?= 1
@@ -69,7 +71,7 @@ TEST ?= 0
 TAMP ?= 3000
 THZ ?= 2
 DEFS = -DV_MAX='($(VMAX))' -DV_BACK='($(VBACK))' -DV_SLOW='($(VSLOW))' -DACC_MAX='($(ACC))' -DFF_K='($(FFK))' -DTI_S='($(TI))' -DI_CLIP='($(ICLIP))' \
-       -DE_MAX='($(EMAX))' -DVBW='($(VBW))' -DK_BA='($(KBA))' -DK_WA='($(KWA))' -DK_BR='($(KBR))' -DK_WR='($(KWR))' -DV_BOOST='($(BOOST))' -DACC_BOOST='($(BACC))' \
+       -DE_MAX='($(EMAX))' -DVBW='($(VBW))' -DK_CP='($(KCP))' -DK_CI='($(KCI))' -DK_BA='($(KBA))' -DK_WA='($(KWA))' -DK_BR='($(KBR))' -DK_WR='($(KWR))' -DV_BOOST='($(BOOST))' -DACC_BOOST='($(BACC))' \
        -DCAL_RANGE=$(CAL_RANGE) -DGYRO_TRIM_T='($(GTRIM))' -DBZ_T='($(BZT))' -DBL_I='($(BL))' -DBL_W='($(BLW))' -DREC_DIV=$(LOGDIV) -DLOG_SET=$(LOGSET) -DDIAG=$(DIAG) -DDIAG_DELAY=$(DIAG_DELAY) -DTEST=$(TEST) -DTEST_AMP=$(TAMP) -DTEST_HZ=$(THZ)
 
 # 引数を変えたときに作り直されるよう、main.o は毎回コンパイルする (FORCE)
