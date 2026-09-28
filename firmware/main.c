@@ -53,7 +53,7 @@
 #define E_MAX     (4.0)     /* EMAX: 走行中の車輪角のずれの上限 [rad] (1 rad = 2.1 cm) */
 #endif
 #ifndef K_CP
-#define K_CP      (1.0)     /* KCP: 純正ライブラリの電流制御の P ゲインの倍率 (純正 = 1)。電流の立ち上がりを速くする */
+#define K_CP      (4.0)     /* KCP: 純正ライブラリの電流制御の P ゲインの倍率 (純正 = 1)。4 で電流の立ち上がりが 93ms → 5ms、走りがはっきり安定した */
 #endif
 #ifndef K_CI
 #define K_CI      (1.0)     /* KCI: 同じく I ゲインの倍率 */
