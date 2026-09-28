@@ -62,9 +62,12 @@ BLW ?= 500
 LOGDIV ?= 20
 DIAG ?= 0
 DIAG_DELAY ?= 0
+TEST ?= 0
+TAMP ?= 3000
+THZ ?= 2
 DEFS = -DV_MAX='($(VMAX))' -DV_BACK='($(VBACK))' -DV_SLOW='($(VSLOW))' -DACC_MAX='($(ACC))' -DFF_K='($(FFK))' -DTI_S='($(TI))' -DI_CLIP='($(ICLIP))' \
        -DE_MAX='($(EMAX))' -DVBW='($(VBW))' -DK_BR='($(KBR))' -DK_WR='($(KWR))' -DV_BOOST='($(BOOST))' -DACC_BOOST='($(BACC))' \
-       -DCAL_RANGE=$(CAL_RANGE) -DGYRO_TRIM_T='($(GTRIM))' -DBZ_T='($(BZT))' -DBL_I='($(BL))' -DBL_W='($(BLW))' -DREC_DIV=$(LOGDIV) -DDIAG=$(DIAG) -DDIAG_DELAY=$(DIAG_DELAY)
+       -DCAL_RANGE=$(CAL_RANGE) -DGYRO_TRIM_T='($(GTRIM))' -DBZ_T='($(BZT))' -DBL_I='($(BL))' -DBL_W='($(BLW))' -DREC_DIV=$(LOGDIV) -DDIAG=$(DIAG) -DDIAG_DELAY=$(DIAG_DELAY) -DTEST=$(TEST) -DTEST_AMP=$(TAMP) -DTEST_HZ=$(THZ)
 
 # 引数を変えたときに作り直されるよう、main.o は毎回コンパイルする (FORCE)
 build/main.o: main.c Makefile FORCE | build

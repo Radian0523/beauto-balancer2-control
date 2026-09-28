@@ -88,6 +88,15 @@
 #ifndef DIAG
 #define DIAG      (0)       /* DIAG=1: ジャイロ診断用の記録に切り替える (read_log.py が自動で判別) */
 #endif
+#ifndef TEST
+#define TEST      (0)       /* TEST: 実験モード (制御しない)。1 = モータを切ったまま記録 (倒す実験)、2 = 決まった電流を前後交互に流す (車輪を浮かせて空回し) */
+#endif
+#ifndef TEST_AMP
+#define TEST_AMP  (3000)    /* TAMP: TEST=2 で流す電流指令 */
+#endif
+#ifndef TEST_HZ
+#define TEST_HZ   (2)       /* THZ: TEST=2 で前後を切り替える回数 [往復/s] */
+#endif
 #ifndef DIAG_DELAY
 #define DIAG_DELAY (0)      /* DIAG_DELAY: >0 ならスタート後この秒数はモータを止めて記録だけ取る */
 #endif
@@ -540,6 +549,36 @@ int main(void)
             }
             setLED(2);
             reset_state();          /* この時点の姿勢を 0° にしてから制御を始める (記録は消さない) */
+        }
+#endif
+#if TEST > 0
+        /* 実験モード: 制御はせず記録だけ取る。ボタンで終了して待機に戻る (記録は残る)。
+         *   TEST=1: モータを切ったまま。機体を立てて手を離し、倒れる様子を記録する (重力で倒れる速さを測る)
+         *   TEST=2: 左右同じ電流 ±TEST_AMP を TEST_HZ 往復/s で流す。機体を持ち上げて車輪を浮かせておく
+         *           (車輪とモータの重さ・摩擦、電流が力になるまでの遅れ、ギアのガタを測る) */
+        {
+            int k = 0;
+            if (TEST == 2) CurrentControlEnable();
+            while (1) {
+                uint8_t slow = CycleProc();
+                if (TEST == 2) {
+                    short u = ((k / (MAIN_CYCLE / (2 * TEST_HZ))) % 2) ? TEST_AMP : -TEST_AMP;
+                    memmap.values.T_CURRENT_L = memmap.values.T_CURRENT_R = u;
+                }
+                wheel_observer();
+                log_sample();
+                k++;
+                LedBlink(0, 3, 100, MAIN_CYCLE);
+                if (slow == 1 && getSW() == 1) {
+                    while (getSW() == 1) __NOP();
+                    break;
+                }
+            }
+            CurrentControlDisable();
+            memmap.values.T_CURRENT_L = memmap.values.T_CURRENT_R = 0;
+            reset_state();
+            Wait(1000);
+            continue;
         }
 #endif
         CurrentControlEnable();
