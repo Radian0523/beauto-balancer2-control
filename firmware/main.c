@@ -67,6 +67,12 @@
 #ifndef GYRO_TRIM_T
 #define GYRO_TRIM_T (5.0)   /* GTRIM: 走行中のジャイロ 0 点補正の時定数 [s]。0 で無効 */
 #endif
+#ifndef BL_I
+#define BL_I      (0)       /* BL: ギアのガタの補償の強さ [電流指令]。0 で無効 */
+#endif
+#ifndef BL_W
+#define BL_W      (500.0)   /* BLW: 補償が効き始める幅 [電流指令]。小さいほど向きの切り替わりが急 */
+#endif
 #ifndef BZ_T
 #define BZ_T      (2.0)     /* BZT: 釣り合う角度を覚え直す時定数 [s] (スタート直後 BZ_T0 秒は BZ_T_FAST)。0 で無効 */
 #endif
@@ -225,6 +231,21 @@ static void balance_zero(void)
 #endif
 }
 
+/* ============================================================ ギアのガタの補償
+ *
+ * 平地では、バランスを取る力の平均がほぼ 0 なので、モータの力の向きが頻繁に入れ替わる
+ * (電流指令の符号が 79% の周期で入れ替わる)。そのたびにギアがガタ (歯のすき間) の中を空回りして歯がぶつかり、
+ * これが 7〜11Hz の細かい振動 (キュッキュッ) になっている。坂を登るときは力がずっと同じ向きなので
+ * ガタを行き来せず、振動が 1/10 になった (本体角速度の揺れ 56 → 6°/s)。
+ * そこで、力の向きに合わせて BL_I だけ電流を足し、向きが入れ替わったときにすき間を素早く詰める。
+ * 符号をそのまま使うと 0 付近で激しく切り替わるので、u / (|u| + BL_W) でなめらかにする。
+ */
+static double backlash(double u)
+{
+    double a = u < 0 ? -u : u;
+    return u + BL_I * u / (a + BL_W);
+}
+
 /* ============================================================ ③ 状態フィードバック
  *
  * 純正 Control() と同じ形: 本体の傾き・傾く速さ・車輪角のずれ・車輪角速度のずれ に純正ゲインを掛けて足す。
@@ -233,6 +254,7 @@ static void balance_zero(void)
  *   - 走行中だけ車輪角のずれ (左右の平均) に上限 E_MAX をかける (段差対策)
  *   - 車輪角速度は ② のオブザーバの値を使い、純正の単位の間違い (T_SPD / MAIN_CYCLE) を直す
  *   - 車輪角のずれの積分を足す (坂対策)
+ *   - 最後にギアのガタの補償をかける (BL_I > 0 のとき)
  */
 static double ref_l, ref_r;         /* 目標車輪角 [rad] */
 static double int_l, int_r;         /* 車輪角のずれの積分 [rad*s] */
@@ -292,6 +314,9 @@ static void control(void)
          + memmap.values.GAIN_WHEEL_CORRELATION_ANGULAR_SPD * (sl - sr));
     outL -= corr;
     outR += corr;
+
+    outL = backlash(outL);
+    outR = backlash(outR);
 
     last_el = el;
     last_er = er;
