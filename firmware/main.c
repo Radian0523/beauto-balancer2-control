@@ -101,7 +101,7 @@
 #define BTN_SLOW2 (0x0004)  /* BTNSLOW2: 逆向きのゆっくりモードのボタン (L1) のビット */
 #endif
 #ifndef V_SLOW2
-#define V_SLOW2   (0.08)    /* VSLOW2: L1 を押している間に自動で進む速さ [m/s]。0 で無効 */
+#define V_SLOW2   (0.05)    /* VSLOW2: L1 を押している間に自動で進む速さ [m/s]。0 で無効。0.08 だと渡る途中の揺れ 41°/s、0.05 で 17°/s */
 #endif
 #ifndef K_BA_S2
 #define K_BA_S2   (1.0)     /* KBAS2: L1 の間だけ使う KBA */
