@@ -5,6 +5,7 @@
   ./bb2 log                  走行ログを吸い出してグラフ (logs/)。集計 (stats) も表示する
   ./bb2 live                 ケーブルを繋いだまま走行ログをリアルタイムでグラフに流す (logs/live_*.csv に保存)
   ./bb2 pad                  機体が受け取っているコントローラの値を表示 (スティックの中立のずれを見る)
+  ./bb2 battery              繋いでいる機体の電池の状態を測る (車輪を浮かせて 1.5 秒空回し。待機中に実行)
   ./bb2 stats [CSV...]       ログを 止まっている/加速/一定速度/減速 に分けて集計・比較 (省略時は最新 3 本)
   パラメータは今まで通り make の引数で変える: ./bb2 flash v5 VMAX=0.25 BOOST=0.3
 """
@@ -55,12 +56,16 @@ def cmd_live(_):
     sys.exit(subprocess.call([os.path.join(ROOT, ".venv", "bin", "python"), os.path.join(HERE, "live.py")], cwd=ROOT))
 
 
+def cmd_battery(_):
+    sys.exit(subprocess.call([os.path.join(ROOT, ".venv", "bin", "python"), os.path.join(HERE, "battery.py")], cwd=ROOT))
+
+
 def main():
     if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help", "help"):
         print(__doc__)
         return
     cmd, args = sys.argv[1], sys.argv[2:]
-    table = {"build": make, "flash": cmd_flash, "log": cmd_log, "stats": cmd_stats, "pad": cmd_pad, "live": cmd_live}
+    table = {"build": make, "flash": cmd_flash, "log": cmd_log, "stats": cmd_stats, "pad": cmd_pad, "live": cmd_live, "battery": cmd_battery}
     if cmd not in table:
         sys.exit(f"不明なコマンド: {cmd}\n{__doc__}")
     table[cmd](args)
