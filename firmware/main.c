@@ -95,6 +95,23 @@
 #ifndef K_WR_S
 #define K_WR_S    (1.0)     /* KWRS: ゆっくりモードの間だけ使う KWR。1.25 だと渡る途中の揺れが 5 → 60°/s。EMAX=1 なら 1 でシーソーを完走 */
 #endif
+/* シーソー逆向き用のゆっくりモード (L1)。逆向きは揺れ方がきついので、R1 とは別に速さ・ゲイン・ずれの上限を変えられる。
+ * 既定は R1 と同じ。make の引数で変えて試す */
+#ifndef BTN_SLOW2
+#define BTN_SLOW2 (0x0004)  /* BTNSLOW2: 逆向きのゆっくりモードのボタン (L1) のビット */
+#endif
+#ifndef V_SLOW2
+#define V_SLOW2   (0.08)    /* VSLOW2: L1 を押している間に自動で進む速さ [m/s]。0 で無効 */
+#endif
+#ifndef K_BA_S2
+#define K_BA_S2   (1.0)     /* KBAS2: L1 の間だけ使う KBA */
+#endif
+#ifndef K_WR_S2
+#define K_WR_S2   (1.0)     /* KWRS2: L1 の間だけ使う KWR */
+#endif
+#ifndef E_MAX_S2
+#define E_MAX_S2  (1.0)     /* EMAX2: L1 の間だけ使う、走行中の車輪角のずれの上限 [rad] */
+#endif
 #define SLOW_GAIN_T (0.3)   /* ゲインをゆっくりモード用に切り替えるのにかける時間 [s]。一度に変えると蹴られる */
 #ifndef S_MAX
 #define S_MAX     (0.4)     /* SMAX: 車輪の速さのずれ (前後の平均) の上限 [m/s]。0 で無効。
@@ -176,8 +193,8 @@ static int boost_left;              /* ダッシュの残り [周期] */
 static unsigned short btn_prev, btn_idle;   /* ボタンを押していないときの値を基準にする */
 static double v_fast = V_FAST;      /* いそいそモードの速さ。◯/✖︎ で変える (電源を切るまで覚えている) */
 static unsigned short btn_last;     /* ◯/✖︎ の押した瞬間を見るための前回の値 */
-static int slow_on;                 /* ゆっくりモード (R1) を押しているなら 1 */
-static double slow_g;               /* ゲインの切り替えの進み具合 0 (普段) 〜 1 (ゆっくりモード用) */
+static int slow_on;                 /* ゆっくりモード: 0 = 押していない、1 = R1 (順向き)、2 = L1 (逆向き) */
+static double kba_now, kwr_now, emax_now;   /* 今使っている KBA・KWR・ずれの上限 (モードの値へ SLOW_GAIN_T かけて近づける) */
 static int ly0, rx0;                /* スタート時のスティックの値 = 中立。スティックは手を離してもぴったり 0 に戻らない */
 
 static int neutral(char raw)
@@ -230,9 +247,12 @@ static void pad_to_speed(void)
         /* 確認用: USB で ./bb2 pad から見えるように memmap の空き欄に書き出す */
         memmap.values.USER_ARIA1 = btn_idle;
         memmap.values.USER_ARIA2 = pressed;
-        slow_on = (V_SLOW > 0 && V_BOOST <= 0 && (pressed & BTN_SLOW));
+        slow_on = 0;
+        if (V_SLOW > 0 && V_BOOST <= 0 && (pressed & BTN_SLOW)) slow_on = 1;
+        else if (V_SLOW2 > 0 && V_BOOST <= 0 && (pressed & BTN_SLOW2)) slow_on = 2;
         if (slow_on) {
-            v_tgt = (s < 0) ? V_SLOW * (1.0 + 2.0 * s) : V_SLOW;    /* 引かなければ +V_SLOW、引ききると -V_SLOW */
+            double vs = (slow_on == 1) ? V_SLOW : V_SLOW2;
+            v_tgt = (s < 0) ? vs * (1.0 + 2.0 * s) : vs;            /* 引かなければ +vs、引ききると -vs */
             w_tgt *= 0.5;
         } else if (V_FAST > 0 && V_BOOST <= 0 && (pressed & BTN_FAST)) {
             v_tgt = (s < 0) ? v_fast * (1.0 + 2.0 * s) : v_fast;
@@ -352,11 +372,21 @@ static void control(void)
     double outL, outR;
     double kw  = memmap.values.GAIN_WHEEL;
     double kwa = memmap.values.GAIN_WHEEL_ANGLE * K_WA;
-    double kba, kwr, body;
-    /* ゆっくりモードの間だけ、傾きと車輪の速さのゲインを強くする (シーソー用)。SLOW_GAIN_T かけて切り替える */
-    slow_g = clamp(slow_g + (slow_on ? 1.0 : -1.0) / (SLOW_GAIN_T * MAIN_CYCLE), 0.0, 1.0);
-    kba = K_BA + (K_BA_S - K_BA) * slow_g;
-    kwr = K_WR + (K_WR_S - K_WR) * slow_g;
+    double kba, kwr, emax, body;
+    /* ゆっくりモード (R1 / L1) の間は、そのモード用のゲインとずれの上限を使う (シーソー用)。
+     * 一度に変えると蹴られるので、1 の変化に SLOW_GAIN_T 秒かける速さで近づける */
+    {
+        const double step = 1.0 / (SLOW_GAIN_T * MAIN_CYCLE);
+        double tba = (slow_on == 1) ? K_BA_S : (slow_on == 2) ? K_BA_S2 : K_BA;
+        double twr = (slow_on == 1) ? K_WR_S : (slow_on == 2) ? K_WR_S2 : K_WR;
+        double tem = (slow_on == 2) ? E_MAX_S2 : E_MAX;
+        kba_now += clamp(tba - kba_now, -step, step);
+        kwr_now += clamp(twr - kwr_now, -step, step);
+        emax_now += clamp(tem - emax_now, -step, step);
+    }
+    kba = kba_now;
+    kwr = kwr_now;
+    emax = emax_now;
     /* 本体の項 [v5] 目標前傾からのずれ */
     body = memmap.values.GAIN_BODY * (memmap.values.GAIN_BODY_ANGLE * kba * (memmap.values.BODY_ANGLE - th0 - th_ref)
                 + memmap.values.GAIN_BODY_ANGULAR_SPD * K_BR * (memmap.values.BODY_ANGULAR_SPD - dth_ref));
@@ -375,8 +405,8 @@ static void control(void)
      * 目標が機体と一緒に動いてしまい、元の位置に戻らず一方向に流れ続けるため。 */
     if (v_cmd > 0.02 || v_cmd < -0.02) {
         double em = (el + er) * 0.5, d = 0.0;
-        if (em >  E_MAX) d = em - E_MAX;
-        if (em < -E_MAX) d = em + E_MAX;
+        if (em >  emax) d = em - emax;
+        if (em < -emax) d = em + emax;
         ref_l += d; ref_r += d;
         el -= d; er -= d;
     }
@@ -601,7 +631,9 @@ static void reset_state(void)
     bz_tick = 0;
     boost_left = 0;
     slow_on = 0;
-    slow_g = 0.0;
+    kba_now = K_BA;
+    kwr_now = K_WR;
+    emax_now = E_MAX;
     ob_init = 0;
     btn_idle = btn_prev = btn_last = memmap.values.PAD_BTN;
     ly0 = neutral(memmap.values.PAD_AN_LY);
