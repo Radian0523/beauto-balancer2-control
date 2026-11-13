@@ -5,3 +5,8 @@ archive/sim/out/*.so
 firmware/build/
 .venv/
 .DS_Store
+
+# 純正ライブラリと、それを含むバイナリは公開しない (firmware/vendor/README.md)
+firmware/vendor/*
+!firmware/vendor/README.md
+snapshots/**/*.bin
